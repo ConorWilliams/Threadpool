@@ -30,32 +30,33 @@ template <typename T> class Queue {
         if (std::unique_lock<std::mutex> lock{_mutex, std::try_to_lock}) {
             T tmp = std::move(_queue.front());
             _queue.pop();
-            lock.unlock();
             return tmp;
         } else {
             return std::nullopt;
         }
     }
 
-    // Wait until there is something in the queue
-    std::optional<T> wait_pop() {
+    // Wait until there is something in the queue or pred returns true
+    template <typename Predicate> std::optional<T> pop_wait(Predicate pred) {
         std::unique_lock<std::mutex> lock{_mutex};
 
-        _cv.wait(lock, [&] { return !_queue.empty(); });
+        _cv.wait(lock, [&] { return !_queue.empty() || pred(); });
 
         if (!_queue.empty()) {
             T tmp = std::move(_queue.front());
             _queue.pop();
-            lock.unlock();
             return tmp;
         } else {
             return std::nullopt;
         }
     }
 
-    void release_waiting() { _cv.notify_all(); }
+    bool empty() {
+        std::unique_lock<std::mutex> lock(_mutex);
+        return _queue.empty();
+    }
 
-    ~Queue() { release_waiting(); }
+    ~Queue() { _cv.notify_all(); }
 
   private:
     std::queue<T> _queue;
@@ -70,12 +71,17 @@ class ThiefPool {
         for (std::size_t i = 0; i < threads; ++i) {
             _threads.emplace_back([&, id = i](std::stop_token tok) {
                 //
-                while (!tok.stop_requested()) {
-                    if (std::optional task = _tasks[id].wait_pop()) {
+                while (!tok.stop_requested() || !_tasks[id].empty()) {
+                    std::optional task = _tasks[id].pop_wait([&] { return tok.stop_requested(); });
+
+                    if (task) {
                         std::invoke(std::move(*task));
                     }
-                    for (size_t i = 0; i < _tasks.size(); i++) {
+
+                    for (size_t i = 1; i < _tasks.size(); i++) {
+                        std::cout << "stole" << (id + i) % _tasks.size() << std::endl;
                         if (std::optional task = _tasks[(id + i) % _tasks.size()].try_pop()) {
+                            //
                             std::invoke(std::move(*task));
                         }
                     }
@@ -83,22 +89,28 @@ class ThiefPool {
             });
         }
     }
+
+    ~ThiefPool() {
+        for (auto &&thread : _threads) {
+            thread.request_stop();
+        }
+    }
+
     template <typename F, typename... Args> auto execute(F &&f, Args &&...args) {
         //
         auto task = NullaryOneShot(bind(std::forward<F>(f), std::forward<Args>(args)...));
 
         auto future = task.get_future();
 
-        std::cout << "emplace at " << _pos % _tasks.size() << std::endl;
-
-        _tasks[_pos % _tasks.size()].emplace(std::move(task));
+        _tasks[_pos++ % _tasks.size()].emplace(std::move(task));
 
         return future;
     }
 
   private:
-    std::vector<Queue<fu2::unique_function<void() &&>>> _tasks;
     std::vector<std::jthread> _threads;
 
     std::size_t _pos = 0;
+
+    std::vector<Queue<fu2::unique_function<void() &&>>> _tasks;
 };
