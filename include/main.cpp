@@ -87,8 +87,6 @@ template <typename TP> void test() {
     tock(slow_jobs);
 }
 
-std::jthread tesdt;
-
 int main() {
     test<ThreadPool>();
 
