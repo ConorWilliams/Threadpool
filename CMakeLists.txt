@@ -32,24 +32,24 @@ CPMAddPackage("gh:Naios/function2#4.1.0")
 
 # ---- Create library ----
 
-set(sources "include/singlequeue.cpp")
+
 
 # Note: for header-only libraries change all PUBLIC flags to INTERFACE and create an interface
 # target: add_library(Threadpool INTERFACE)
-add_library(Threadpool ${sources})
+add_library(Threadpool INTERFACE ${sources})
 
-target_compile_features(Threadpool PUBLIC cxx_std_20)
+target_compile_features(Threadpool INTERFACE cxx_std_20)
 
-target_compile_options(Threadpool PRIVATE -Wall -Wextra -Wpedantic)
+target_compile_options(Threadpool INTERFACE -Wall -Wextra -Wpedantic)
 
 # Being a cross-platform target, we enforce standards conformance on MSVC
-target_compile_options(Threadpool PUBLIC "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/permissive>")
+target_compile_options(Threadpool INTERFACE "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/permissive>")
 
 # Link dependencies
-target_link_libraries(Threadpool PUBLIC function2::function2 ${CMAKE_THREAD_LIBS_INIT})
+target_link_libraries(Threadpool INTERFACE function2::function2 ${CMAKE_THREAD_LIBS_INIT})
 
 target_include_directories(
-  Threadpool PUBLIC $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+  Threadpool INTERFACE $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
                     $<INSTALL_INTERFACE:include/${PROJECT_NAME}-${PROJECT_VERSION}>
 )
 
