@@ -1,3 +1,10 @@
+# Custom
+build
+.vscode
+.clangd
+.cache
+compile_commands.json
+
 # Prerequisites
 *.d
 
