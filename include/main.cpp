@@ -88,7 +88,7 @@ template <typename TP> void test() {
 }
 
 int main() {
-    test<ThreadPool>();
+    test<ThiefPool>();
 
     // std::cout << "Each job: " << total / jobs << std::endl;
 
