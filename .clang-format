@@ -4,7 +4,7 @@ AlignTrailingComments: 'true'
 AllowAllParametersOfDeclarationOnNextLine: 'false'
 AlwaysBreakTemplateDeclarations: 'No'
 BreakBeforeBraces: Attach
-ColumnLimit: '100'
+ColumnLimit: '110'
 ConstructorInitializerAllOnOneLineOrOnePerLine: 'true'
 IncludeBlocks: Regroup
 IndentPPDirectives: AfterHash

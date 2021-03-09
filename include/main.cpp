@@ -8,12 +8,13 @@
 #include <iostream>
 #include <iterator>
 #include <ratio>
+#include <stop_token>
 #include <thread>
 
 #include "function2/function2.hpp"
 #include "multiqueue.hpp"
 #include "singlequeue.hpp"
-#include "wsq2.hpp"
+#include "thiefqueue.hpp"
 
 struct clock_tick {
     std::string name;
@@ -90,6 +91,39 @@ template <typename TP> void test() {
 
 int main() {
     std::cout << "working" << std::endl;
+
+    ThiefQueue<std::vector<int>> q{2};
+
+    std::jthread t1([&](std::stop_token tok) {
+        while (!tok.stop_requested()) {
+            if (q.steal()) {
+                std::cout << "1, got it\n";
+            }
+        }
+    });
+
+    std::jthread t2([&](std::stop_token tok) {
+        while (!tok.stop_requested()) {
+            if (q.steal()) {
+                std::cout << "2, got it\n";
+            }
+        }
+    });
+
+    for (size_t i = 0; i < 15; i++) {
+        q.emplace(0, 0);
+    }
+
+    std::this_thread::sleep_for(std::chrono::nanoseconds(100));
+
+    if (q.steal()) {
+        std::cout << "0, got it\n";
+    }
+
+    std::this_thread::sleep_for(std::chrono::seconds(1));
+
+    t1.request_stop();
+    t2.request_stop();
 
     return 0;
 }
