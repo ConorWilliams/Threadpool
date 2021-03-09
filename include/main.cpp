@@ -1,7 +1,5 @@
 
 
-#include <bits/c++config.h>
-
 #include <atomic>
 #include <chrono>
 #include <function2/function2.hpp>
@@ -12,9 +10,9 @@
 #include <stop_token>
 #include <thread>
 
+#include "blocking.hpp"
 #include "function2/function2.hpp"
-#include "singlequeue.hpp"
-#include "thiefqueue.hpp"
+#include "threadpool.hpp"
 
 struct clock_tick {
     std::string name;
@@ -112,49 +110,7 @@ struct Talker {
 };
 
 int main() {
-    {
-        ThiefDeque<Talker> q;
+    test<ThreadPool>();
 
-        std::jthread t1([&](std::stop_token tok) {
-            while (!tok.stop_requested()) {
-                if (q.steal()) {
-                    std::cout << "1, got it\n";
-                }
-            }
-        });
-
-        std::jthread t2([&](std::stop_token tok) {
-            while (!tok.stop_requested()) {
-                if (q.steal()) {
-                    std::cout << "2, got it\n";
-                }
-            }
-        });
-
-        for (size_t i = 0; i < 2; i++) {
-            q.emplace();
-        }
-
-        std::this_thread::sleep_for(std::chrono::nanoseconds(100));
-
-        if (q.pop()) {
-            // std::cout << "0, got it\n";
-        }
-
-        for (size_t i = 0; i < 5; i++) {
-            q.emplace();
-        }
-
-        std::this_thread::sleep_for(std::chrono::seconds(1));
-
-        t1.request_stop();
-        t2.request_stop();
-
-        for (size_t i = 0; i < 5; i++) {
-            q.emplace();
-        }
-    }
-    std::cout << "Alive " << count << "\n";
-
-    return 0;
+    std::cout << "Done!" << std::endl;
 }
