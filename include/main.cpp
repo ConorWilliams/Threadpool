@@ -13,6 +13,7 @@
 #include "function2/function2.hpp"
 #include "multiqueue.hpp"
 #include "singlequeue.hpp"
+#include "wsq2.hpp"
 
 struct clock_tick {
     std::string name;
@@ -88,9 +89,7 @@ template <typename TP> void test() {
 }
 
 int main() {
-    test<ThiefPool>();
-
-    // std::cout << "Each job: " << total / jobs << std::endl;
+    std::cout << "working" << std::endl;
 
     return 0;
 }

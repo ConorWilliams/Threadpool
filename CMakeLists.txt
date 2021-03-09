@@ -38,6 +38,8 @@ CPMAddPackage("gh:Naios/function2#4.1.0")
 # target: add_library(Threadpool INTERFACE)
 add_library(Threadpool INTERFACE ${sources})
 
+# target_compile_features(Threadpool INTERFACE cxx_semaphore)
+
 target_compile_features(Threadpool INTERFACE cxx_std_20)
 
 target_compile_options(Threadpool INTERFACE -Wall -Wextra -Wpedantic)

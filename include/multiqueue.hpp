@@ -1,12 +1,12 @@
 #pragma once
 
-#include <bits/c++config.h>
-
 #include <concepts>
 #include <condition_variable>
 #include <cstddef>
 #include <future>
+#include <memory>
 #include <mutex>
+#include <optional>
 #include <queue>
 #include <thread>
 #include <type_traits>  // invoke_result
@@ -15,26 +15,24 @@
 
 #include "function2/function2.hpp"
 #include "shared.hpp"
+#include "wsq.hpp"
 
 template <typename T> class Queue {
   public:
-    template <typename... Args> void emplace(Args &&...args) {
-        std::unique_lock<std::mutex> lock(_mutex);
-        _queue.emplace(std::forward<Args>(args)...);
-        lock.unlock();
-
+    template <typename U> void push(U &&item) {
+        _queue.push(new T(std::forward<U>(item)));
         _cv.notify_one();
     }
 
-    std::optional<T> try_pop() {
-        if (std::unique_lock<std::mutex> lock{_mutex, std::try_to_lock}) {
-            T tmp = std::move(_queue.front());
-            _queue.pop();
-            return tmp;
-        } else {
-            return std::nullopt;
-        }
-    }
+    // std::optional<T> pop() {
+    //     if (std::optional<T *> item = _queue.pop()) {
+    //         T tmp(std::move(**item));
+    //         delete *item;
+    //         return tmp;
+    //     }
+
+    //     return std::nullopt;
+    // }
 
     // Wait until there is something in the queue or pred returns true
     template <typename Predicate> std::optional<T> pop_wait(Predicate pred) {
@@ -42,24 +40,21 @@ template <typename T> class Queue {
 
         _cv.wait(lock, [&] { return !_queue.empty() || pred(); });
 
-        if (!_queue.empty()) {
-            T tmp = std::move(_queue.front());
-            _queue.pop();
+        if (std::optional<T *> item = _queue.pop()) {
+            T tmp{std::move(**item)};
+            delete *item;
             return tmp;
-        } else {
-            return std::nullopt;
         }
+
+        return std::nullopt;
     }
 
-    bool empty() {
-        std::unique_lock<std::mutex> lock(_mutex);
-        return _queue.empty();
-    }
+    bool empty() { return _queue.empty(); }
 
     ~Queue() { _cv.notify_all(); }
 
   private:
-    std::queue<T> _queue;
+    WorkStealingQueue<T *> _queue;
     std::mutex _mutex;
     std::condition_variable _cv;
 };
@@ -74,17 +69,20 @@ class ThiefPool {
                 while (!tok.stop_requested() || !_tasks[id].empty()) {
                     std::optional task = _tasks[id].pop_wait([&] { return tok.stop_requested(); });
 
+                    // std::optional task = _tasks[id].try_pop();
+
                     if (task) {
                         std::invoke(std::move(*task));
                     }
 
-                    for (size_t i = 1; i < _tasks.size(); i++) {
-                        std::cout << "stole" << (id + i) % _tasks.size() << std::endl;
-                        if (std::optional task = _tasks[(id + i) % _tasks.size()].try_pop()) {
-                            //
-                            std::invoke(std::move(*task));
-                        }
-                    }
+                    // for (size_t i = 1; i < _tasks.size(); i++) {
+                    //     // std::cout << "stole" << (id + i) % _tasks.size() << std::endl;
+                    //     if (std::optional task = _tasks[(id + i) % _tasks.size()].try_pop()) {
+                    //         //
+                    //         std::invoke(std::move(**task));
+                    //         delete *task;
+                    //     }
+                    // }
                 }
             });
         }
@@ -98,11 +96,12 @@ class ThiefPool {
 
     template <typename F, typename... Args> auto execute(F &&f, Args &&...args) {
         //
+
         auto task = NullaryOneShot(bind(std::forward<F>(f), std::forward<Args>(args)...));
 
         auto future = task.get_future();
 
-        _tasks[_pos++ % _tasks.size()].emplace(std::move(task));
+        _tasks[_pos++ % _tasks.size()].push(std::move(task));
 
         return future;
     }
