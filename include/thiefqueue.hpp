@@ -7,11 +7,11 @@
 #include <utility>
 #include <vector>
 
-// Lock-free unbounded single-producer multiple-consumer queue.  This class implements the work stealing
-// queue described in the paper, "Correct and Efficient Work-Stealing for Weak Memory Models," available at
-// https://www.di.ens.fr/~zappa/readings/ppopp13.pdf. Only the queue owner can perform pop and push
-// operations, while others can steal data from the queue.
-template <typename T> class ThiefQueue {
+// Lock-free single-producer multiple-consumer queue. Only the queue owner can perform pop and push
+// operations, while others can steal data from the queue. All threads must have finished using the Deque
+// before it is destructed. This class implements the queue described in the paper, "Correct and Efficient
+// Work-Stealing for Weak Memory Models," available at https://www.di.ens.fr/~zappa/readings/ppopp13.pdf.
+template <typename T> class ThiefDeque {
     // Convinience aliases
     static constexpr std::memory_order relaxed = std::memory_order::relaxed;
     static constexpr std::memory_order consume = std::memory_order::consume;
@@ -50,10 +50,10 @@ template <typename T> class ThiefQueue {
 
   public:
     // Constructs the queue with a given cap the cap of the queue (must be power of 2)
-    explicit ThiefQueue(std::int64_t cap = 1024);
+    explicit ThiefDeque(std::int64_t cap = 1024);
 
     // Destruct the queue, all threads must have finished using the queue.
-    ~ThiefQueue();
+    ~ThiefDeque();
 
     // Emplace an item to the queue Only the owner thread can insert an item to the queue. The operation can
     // trigger the queue to resize its cap if more space is required.
@@ -75,7 +75,7 @@ template <typename T> class ThiefQueue {
     std::vector<Array*> _garbage;
 };
 
-template <typename T> ThiefQueue<T>::ThiefQueue(std::int64_t cap) {
+template <typename T> ThiefDeque<T>::ThiefDeque(std::int64_t cap) {
     assert(cap && (!(cap & (cap - 1))));
     _top.store(0, relaxed);
     _bottom.store(0, relaxed);
@@ -83,7 +83,7 @@ template <typename T> ThiefQueue<T>::ThiefQueue(std::int64_t cap) {
     _garbage.reserve(32);
 }
 
-template <typename T> ThiefQueue<T>::~ThiefQueue() {
+template <typename T> ThiefDeque<T>::~ThiefDeque() {
     for (auto a : _garbage) {
         delete a;
     }
@@ -93,7 +93,7 @@ template <typename T> ThiefQueue<T>::~ThiefQueue() {
     delete _array.load();
 }
 
-template <typename T> template <typename... Args> void ThiefQueue<T>::emplace(Args&&... args) {
+template <typename T> template <typename... Args> void ThiefDeque<T>::emplace(Args&&... args) {
     // Construct new object
     T* x = new T(std::forward<Args>(args)...);
 
@@ -113,7 +113,7 @@ template <typename T> template <typename... Args> void ThiefQueue<T>::emplace(Ar
     _bottom.store(b + 1, relaxed);
 }
 
-template <typename T> std::optional<T> ThiefQueue<T>::pop() {
+template <typename T> std::optional<T> ThiefDeque<T>::pop() {
     std::int64_t b = _bottom.load(relaxed) - 1;
     Array* a = _array.load(relaxed);
     _bottom.store(b, relaxed);
@@ -135,16 +135,13 @@ template <typename T> std::optional<T> ThiefQueue<T>::pop() {
         std::optional<T> tmp = std::move(*x);
         delete x;
         return tmp;
-
     } else {
-        // Empty queue
         _bottom.store(b + 1, relaxed);
         return std::nullopt;
     }
 }
 
-// Function: steal
-template <typename T> std::optional<T> ThiefQueue<T>::steal() {
+template <typename T> std::optional<T> ThiefDeque<T>::steal() {
     std::int64_t t = _top.load(acquire);
     std::atomic_thread_fence(seq_cst);
     std::int64_t b = _bottom.load(acquire);
@@ -157,13 +154,10 @@ template <typename T> std::optional<T> ThiefQueue<T>::steal() {
             // Failed race.
             return std::nullopt;
         }
-
         std::optional<T> tmp = std::move(*x);
         delete x;
         return tmp;
-
     } else {
-        // Empty queue.
         return std::nullopt;
     }
 }

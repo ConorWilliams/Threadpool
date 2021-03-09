@@ -2,6 +2,7 @@
 
 #include <bits/c++config.h>
 
+#include <atomic>
 #include <chrono>
 #include <function2/function2.hpp>
 #include <future>
@@ -12,7 +13,6 @@
 #include <thread>
 
 #include "function2/function2.hpp"
-#include "multiqueue.hpp"
 #include "singlequeue.hpp"
 #include "thiefqueue.hpp"
 
@@ -89,41 +89,72 @@ template <typename TP> void test() {
     tock(slow_jobs);
 }
 
+std::atomic<int> count;
+
+struct Talker {
+    bool alive = true;
+
+    Talker() : alive(true) {
+        ++count;
+        std::cout << "construct\n";
+    }
+
+    Talker(Talker const &other) : alive(other.alive) {}
+    Talker(Talker &&other) : alive(std::exchange(other.alive, false)) {}
+
+    ~Talker() {
+        if (alive) {
+            alive = false;
+            --count;
+            std::cout << "destruct\n";
+        }
+    }
+};
+
 int main() {
-    std::cout << "working" << std::endl;
+    {
+        ThiefDeque<Talker> q;
 
-    ThiefQueue<std::vector<int>> q{2};
-
-    std::jthread t1([&](std::stop_token tok) {
-        while (!tok.stop_requested()) {
-            if (q.steal()) {
-                std::cout << "1, got it\n";
+        std::jthread t1([&](std::stop_token tok) {
+            while (!tok.stop_requested()) {
+                if (q.steal()) {
+                    std::cout << "1, got it\n";
+                }
             }
-        }
-    });
+        });
 
-    std::jthread t2([&](std::stop_token tok) {
-        while (!tok.stop_requested()) {
-            if (q.steal()) {
-                std::cout << "2, got it\n";
+        std::jthread t2([&](std::stop_token tok) {
+            while (!tok.stop_requested()) {
+                if (q.steal()) {
+                    std::cout << "2, got it\n";
+                }
             }
+        });
+
+        for (size_t i = 0; i < 2; i++) {
+            q.emplace();
         }
-    });
 
-    for (size_t i = 0; i < 15; i++) {
-        q.emplace(0, 0);
+        std::this_thread::sleep_for(std::chrono::nanoseconds(100));
+
+        if (q.pop()) {
+            // std::cout << "0, got it\n";
+        }
+
+        for (size_t i = 0; i < 5; i++) {
+            q.emplace();
+        }
+
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+
+        t1.request_stop();
+        t2.request_stop();
+
+        for (size_t i = 0; i < 5; i++) {
+            q.emplace();
+        }
     }
-
-    std::this_thread::sleep_for(std::chrono::nanoseconds(100));
-
-    if (q.steal()) {
-        std::cout << "0, got it\n";
-    }
-
-    std::this_thread::sleep_for(std::chrono::seconds(1));
-
-    t1.request_stop();
-    t2.request_stop();
+    std::cout << "Alive " << count << "\n";
 
     return 0;
 }
