@@ -1,8 +1,11 @@
+#pragma once
 
-// Code in the file below is an adaptation by Conor Williams of Jeff Preshing's portable + lightweight
-// semaphore implementations, originally from:
-// https://github.com/preshing/cpp11-on-multicore/blob/master/common/sema.h
+// Code in the file below is an adaptation (by C. J. Williams) of Jeff Preshing's portable + lightweight
+// semaphore implementations, see:
 //
+// https://github.com/preshing/cpp11-on-multicore
+// https://preshing.com/20150316/semaphores-are-surprisingly-versatile/
+
 // LICENSE:
 //
 // Copyright (c) 2015 Jeff Preshing
@@ -22,8 +25,6 @@
 // 2. Altered source versions must be plainly marked as such, and must not be
 //	misrepresented as being the original software.
 // 3. This notice may not be removed or altered from any source distribution.
-
-#pragma once
 
 #include <atomic>
 #include <cassert>

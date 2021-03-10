@@ -9,7 +9,10 @@
 #include <utility>
 #include <vector>
 
-namespace cj {
+// This (standalone) file implements the deque described in the papers, "Correct and Efficient Work-Stealing
+// for Weak Memory Models," and "Dynamic Circular Work-Stealing Deque". Both are avaliable in 'reference/'.
+
+namespace riften {
 
 namespace detail {
 
@@ -37,6 +40,8 @@ template <typename T> struct RingBuff {
     std::int64_t _cap;       // Capacity of the buffer
     std::int64_t _mask;      // Bitmask to perform modulo capacity operations
     std::atomic<T*>* _buff;  // Actuall memory.
+
+    static_assert(std::atomic<T*>::is_always_lock_free, "");
 };
 
 template <typename T> RingBuff<T>* RingBuff<T>::resize(std::int64_t b, std::int64_t t) const {
@@ -49,14 +54,16 @@ template <typename T> RingBuff<T>* RingBuff<T>::resize(std::int64_t b, std::int6
 
 }  // namespace detail
 
-// Lock-free single-producer multiple-consumer deque. Only the deque owner can perform pop and push
-// operations where the deque behaves like a stack. Others can (only) steal data from the deque, they see a
-// FIFO queue. All threads must have finished using the deque before it is destructed.
+// Lock-free single-producer multiple-consumer deque. There are no constraints on the type `T` that can be
+// stored. Only the deque owner can perform pop and push operations where the deque behaves like a stack.
+// Others can (only) steal data from the deque, they see a FIFO queue. All threads must have finished using
+// the deque before it is destructed.
 //
-// The deque provides the strong exception garantee.
+// Deque provides the strong exception garantee for all its methods.
 //
-// This class implements the deque described in the papers, "Correct and Efficient Work-Stealing for Weak
-// Memory Models," and "Dynamic Circular Work-Stealing Deque". Both are avaliable in 'reference/'.
+// Currently all enqued objects get (individually) allocated on the stack. For types, `T`, that have
+// `std::atomic<T>::is_always_lock_free && std::is_trivially_destructible_v<T> == true` this is an
+// unrequired pessimisation.
 template <typename T> class Deque {
   public:
     // Constructs the deque with a given capacity the capacity of the deque (must be power of 2)
@@ -86,6 +93,9 @@ template <typename T> class Deque {
 
     std::atomic<detail::RingBuff<T>*> _buffer;                   // Current buffer.
     std::vector<std::unique_ptr<detail::RingBuff<T>>> _garbage;  // Store old buffers here.
+
+    static_assert(std::atomic<std::int64_t>::is_always_lock_free, "");
+    static_assert(std::atomic<detail::RingBuff<T>*>::is_always_lock_free, "");
 
     // Convinience aliases.
     static constexpr std::memory_order relaxed = std::memory_order::relaxed;
@@ -186,8 +196,7 @@ template <typename T> std::optional<T> Deque<T>::steal() noexcept(std::is_nothro
 
 template <typename T> Deque<T>::~Deque() {
     // Cleans up all remaining items in the deque.
-    while (!empty()) {
-        pop();
+    while (pop()) {
     }
 
     delete _buffer.load();
@@ -195,4 +204,4 @@ template <typename T> Deque<T>::~Deque() {
     assert(empty() && "Busy during destruction");  // Check for interuptions.
 }
 
-}  // namespace cj
+}  // namespace riften

@@ -13,7 +13,6 @@
 #include <thread>
 
 #include "function2/function2.hpp"
-#include "thiefpool.hpp"
 #include "threadpool.hpp"
 
 struct clock_tick {
@@ -45,45 +44,46 @@ template <typename... Args> int tock(clock_tick &x, Args &&...args) {
 }
 
 template <typename TP> void test() {
-    std::atomic_int_fast64_t threads = 2;
-    {
-        auto fast_jobs = tick("fast_jobs");
+    std::atomic_int_fast64_t threads = 10;
 
-        std::atomic_int_fast64_t count;
+    // {
+    //     auto fast_jobs = tick("fast_jobs");
 
-        {
-            TP pool(threads);
+    //     std::atomic_int_fast64_t count;
 
-            for (int i = 0; i < threads * 1000000; i++) {
-                pool.execute([&]() { count++; });
-            }
-        }
+    //     {
+    //         TP pool(threads);
 
-        tock(fast_jobs, count);
+    //         for (int i = 0; i < threads * 100000; i++) {
+    //             pool.enqueue([&]() { count++; });
+    //         }
+    //     }
 
-        assert(count == threads * 1000000);
-    }
+    //     tock(fast_jobs, count);
 
-    {
-        auto slow_jobs = tick("slow_jobs");
+    //     assert(count == threads * 100000);
+    // }
 
-        std::atomic_int_fast64_t count;
+    // {
+    //     auto slow_jobs = tick("slow_jobs");
 
-        {
-            TP pool(threads);
+    //     std::atomic_int_fast64_t count;
 
-            for (int i = 0; i < threads * 10; i++) {
-                pool.execute([&]() {
-                    ++count;
-                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
-                });
-            }
-        }
+    //     {
+    //         TP pool(threads);
 
-        tock(slow_jobs, count);
+    //         for (int i = 0; i < threads * 10; i++) {
+    //             pool.enqueue([&]() {
+    //                 ++count;
+    //                 std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    //             });
+    //         }
+    //     }
 
-        assert(count == threads * 10);
-    }
+    //     tock(slow_jobs, count);
+
+    //     assert(count == threads * 10);
+    // }
 
     {
         auto het_jobs = tick("het_jobs");
@@ -93,17 +93,17 @@ template <typename TP> void test() {
         {
             TP pool(threads);
 
-            for (int i = 0; i < threads * 10; i++) {
-                pool.execute([&, i]() {
+            for (int i = 0; i < threads * 2; i++) {
+                pool.enqueue([&, i]() {
                     ++count;
-                    std::this_thread::sleep_for(std::chrono::milliseconds(10 * i));
+                    std::this_thread::sleep_for(std::chrono::milliseconds((i % threads) + 1));
                 });
             }
         }
 
         tock(het_jobs, count);
 
-        assert(count == threads * 10);
+        assert(count == threads * 2);
     }
 }
 
@@ -130,7 +130,7 @@ struct Talker {
 };
 
 int main() {
-    test<Threadpool>();  // //
+    test<riften::MonoPool>();  // //
 
     std::cout << "Done!" << std::endl;
 }
