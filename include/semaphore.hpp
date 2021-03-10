@@ -23,8 +23,7 @@
 //	misrepresented as being the original software.
 // 3. This notice may not be removed or altered from any source distribution.
 
-#ifndef __CPP11OM_SEMAPHORE_H__
-#define __CPP11OM_SEMAPHORE_H__
+#pragma once
 
 #include <atomic>
 #include <cassert>
@@ -141,9 +140,9 @@ class Semaphore {
 
 }  // namespace detail
 
-class counting_semaphore {
+class Semaphore {
   public:
-    explicit counting_semaphore(std::ptrdiff_t desired) : m_count(desired) { assert(desired >= 0); }
+    explicit Semaphore(std::ptrdiff_t desired) : m_count(desired) { assert(desired >= 0); }
 
     void release(std::ptrdiff_t update = 1) {
         std::ptrdiff_t oldCount = m_count.fetch_add(update, std::memory_order_release);
@@ -189,5 +188,3 @@ class counting_semaphore {
         }
     }
 };
-
-#endif  // __CPP11OM_SEMAPHORE_H__

@@ -3,6 +3,7 @@
 #include <atomic>
 #include <cassert>
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <type_traits>
 #include <utility>
@@ -12,29 +13,30 @@ namespace cj {
 
 namespace detail {
 
-// Basic wrapper around a c-style array of atomic pointers that provides modulo load/stores
+// Basic wrapper around a c-style array of atomic pointers that provides modulo load/stores. Capacity must be
+// a power of 2.
 template <typename T> struct RingBuff {
   public:
-    explicit RingBuff(std::int64_t cap) : _cap{cap}, _mask{cap - 1}, _data{new std::atomic<T*>[cap]} {}
+    explicit RingBuff(std::int64_t cap) : _cap{cap}, _mask{cap - 1}, _buff{new std::atomic<T*>[cap]} {}
 
     std::int64_t capacity() const noexcept { return _cap; }
 
     // Relaxed store at modulo index
-    void store(std::int64_t i, T* x) noexcept { _data[i & _mask].store(x, std::memory_order_relaxed); }
+    void store(std::int64_t i, T* x) noexcept { _buff[i & _mask].store(x, std::memory_order_relaxed); }
 
     // Relaxed load at modulo index
-    T* load(std::int64_t i) const noexcept { return _data[i & _mask].load(std::memory_order_relaxed); }
+    T* load(std::int64_t i) const noexcept { return _buff[i & _mask].load(std::memory_order_relaxed); }
 
     // Allocates and returns a new ring buffer, copies elements in range [b, t) into the new buffer.
     RingBuff<T>* resize(std::int64_t b, std::int64_t t) const;
 
     // Does not call destructor of items in the ring buffer.
-    ~RingBuff() { delete[] _data; }
+    ~RingBuff() { delete[] _buff; }
 
   private:
-    std::int64_t _cap;
-    std::int64_t _mask;
-    std::atomic<T*>* _data;
+    std::int64_t _cap;       // Capacity of the buffer
+    std::int64_t _mask;      // Bitmask to perform modulo capacity operations
+    std::atomic<T*>* _buff;  // Actuall memory.
 };
 
 template <typename T> RingBuff<T>* RingBuff<T>::resize(std::int64_t b, std::int64_t t) const {
@@ -48,41 +50,44 @@ template <typename T> RingBuff<T>* RingBuff<T>::resize(std::int64_t b, std::int6
 }  // namespace detail
 
 // Lock-free single-producer multiple-consumer deque. Only the deque owner can perform pop and push
-// operations, while others can steal data from the deque. All threads must have finished using the deque
-// before it is destructed. This class implements the deque described in the paper, "Correct and Efficient
-// Work-Stealing for Weak Memory Models," available at https://www.di.ens.fr/~zappa/readings/ppopp13.pdf. The
-// deque provides the strong exception garantee.
+// operations where the deque behaves like a stack. Others can (only) steal data from the deque, they see a
+// FIFO queue. All threads must have finished using the deque before it is destructed.
+//
+// The deque provides the strong exception garantee.
+//
+// This class implements the deque described in the papers, "Correct and Efficient Work-Stealing for Weak
+// Memory Models," and "Dynamic Circular Work-Stealing Deque". Both are avaliable in 'reference/'.
 template <typename T> class Deque {
   public:
-    // Constructs the queue with a given cap the cap of the queue (must be power of 2)
+    // Constructs the deque with a given capacity the capacity of the deque (must be power of 2)
     explicit Deque(std::int64_t cap = 1024);
-
-    // Destruct the queue, all threads must have finished using the queue.
-    ~Deque();
 
     // Test if empty at instance of call
     bool empty() const noexcept;
 
-    // Emplace an item to the queue Only the owner thread can insert an item to the queue. The operation can
-    // trigger the queue to resize its cap if more space is required.
+    // Emplace an item to the deque. Only the owner thread can insert an item to the deque. The operation can
+    // trigger the deque to resize its cap if more space is required.
     template <typename... Args> void emplace(Args&&... args);
 
-    // Pops out an item from the queue. Only the owner thread can pop out an item from the queue. The return
-    // can be a std::nullopt if this operation failed (empty queue).
+    // Pops out an item from the deque. Only the owner thread can pop out an item from the deque. The return
+    // can be a std::nullopt if this operation failed (empty deque).
     std::optional<T> pop() noexcept(std::is_nothrow_move_constructible_v<T>);
 
-    // Steals an item from the queue Any threads can try to steal an item from the queue. The return can be a
+    // Steals an item from the deque Any threads can try to steal an item from the deque. The return can be a
     // std::nullopt if this operation failed (not necessary empty).
     std::optional<T> steal() noexcept(std::is_nothrow_move_constructible_v<T>);
 
+    // Destruct the deque, all threads must have finished using the deque.
+    ~Deque();
+
   private:
-    std::atomic<std::int64_t> _top;
-    std::atomic<std::int64_t> _bottom;
+    std::atomic<std::int64_t> _top;     // Top of deque (always >= bottop).
+    std::atomic<std::int64_t> _bottom;  // Bottom of deque.
 
-    std::atomic<detail::RingBuff<T>*> _buffer;
-    std::vector<detail::RingBuff<T>*> _garbage;
+    std::atomic<detail::RingBuff<T>*> _buffer;                   // Current buffer.
+    std::vector<std::unique_ptr<detail::RingBuff<T>>> _garbage;  // Store old buffers here.
 
-    // Convinience aliases
+    // Convinience aliases.
     static constexpr std::memory_order relaxed = std::memory_order::relaxed;
     static constexpr std::memory_order consume = std::memory_order::consume;
     static constexpr std::memory_order acquire = std::memory_order::acquire;
@@ -91,21 +96,11 @@ template <typename T> class Deque {
 };
 
 template <typename T> Deque<T>::Deque(std::int64_t cap) {
-    assert(cap && (!(cap & (cap - 1))));
+    assert(cap && (!(cap & (cap - 1))) && "Capacity must be a power of 2!");
     _top.store(0, relaxed);
     _bottom.store(0, relaxed);
     _buffer.store(new detail::RingBuff<T>{cap}, relaxed);
     _garbage.reserve(32);
-}
-
-template <typename T> Deque<T>::~Deque() {
-    for (auto a : _garbage) {
-        delete a;
-    }
-    // Cleans up all remaining items in queue.
-    while (pop()) {
-    }
-    delete _buffer.load();
 }
 
 template <typename T> bool Deque<T>::empty() const noexcept {
@@ -125,9 +120,9 @@ template <typename T> template <typename... Args> void Deque<T>::emplace(Args&&.
     if (a->capacity() - 1 < (b - t)) {
         // Queue is full, build a new one
         try {
-            _garbage.push_back(std::exchange(a, a->resize(b, t)));
+            _garbage.emplace_back(std::exchange(a, a->resize(b, t)));
         } catch (...) {
-            // If push_back or resize throws; clean-up and rethrow
+            // If emplace_back or resize throws; clean-up and rethrow
             delete x;
             throw;
         }
@@ -148,7 +143,7 @@ template <typename T> std::optional<T> Deque<T>::pop() noexcept(std::is_nothrow_
     std::int64_t t = _top.load(relaxed);
 
     if (t <= b) {
-        // Non-empty queue
+        // Non-empty deque
         T* x = a->load(b);
 
         if (t == b) {
@@ -174,7 +169,7 @@ template <typename T> std::optional<T> Deque<T>::steal() noexcept(std::is_nothro
     std::int64_t b = _bottom.load(acquire);
 
     if (t < b) {
-        // Non-empty queue.
+        // Non-empty deque.
         T* x = _buffer.load(consume)->load(t);
 
         if (!_top.compare_exchange_strong(t, t + 1, seq_cst, relaxed)) {
@@ -187,6 +182,17 @@ template <typename T> std::optional<T> Deque<T>::steal() noexcept(std::is_nothro
     } else {
         return std::nullopt;
     }
+}
+
+template <typename T> Deque<T>::~Deque() {
+    // Cleans up all remaining items in the deque.
+    while (!empty()) {
+        pop();
+    }
+
+    delete _buffer.load();
+
+    assert(empty() && "Busy during destruction");  // Check for interuptions.
 }
 
 }  // namespace cj

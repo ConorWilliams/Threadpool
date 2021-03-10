@@ -1,7 +1,5 @@
 
 
-#include <bits/c++config.h>
-
 #include <atomic>
 
 #include "deque.hpp"
@@ -15,18 +13,16 @@ class Threadpool {
         for (std::size_t i = 0; i < threads; ++i) {
             _threads.emplace_back([&](std::stop_token tok) {
                 while (true) {
-                    // Wait for work/stop-signal to be sent
+                    // Wait to be signalled
                     _sem.acquire();
 
-                    // If sent stop-signal
-                    if (tok.stop_requested() && _in_flight.load(std::memory_order_acquire) == 0) {
+                    if (tok.stop_requested() && !_in_flight.load(std::memory_order::acquire)) {
                         return;
                     }
 
-                    // Spin untill (one) job completed
                     while (true) {
                         if (std::optional one_shot = _tasks.steal()) {
-                            _in_flight.fetch_sub(1, std::memory_order_release);
+                            _in_flight.fetch_sub(1, std::memory_order::release);
                             std::invoke(std::move(*one_shot));
                             break;
                         }
@@ -51,7 +47,7 @@ class Threadpool {
 
         _tasks.emplace(std::move(task));
 
-        _in_flight.fetch_add(1, std::memory_order_release);
+        _in_flight.fetch_add(1, std::memory_order::release);
 
         _sem.release();
 
@@ -60,7 +56,7 @@ class Threadpool {
 
   private:
     std::atomic<std::int64_t> _in_flight;
-    counting_semaphore _sem;
+    Semaphore _sem;
     cj::Deque<fu2::unique_function<void() &&>> _tasks;
     std::vector<std::jthread> _threads;
 };

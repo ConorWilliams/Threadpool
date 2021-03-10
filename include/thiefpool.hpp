@@ -56,8 +56,8 @@ class Thiefpool {
     std::size_t count = 0;
 
     struct SemDeque {
-        counting_semaphore sem{0};
-        cj::Deque<fu2::unique_function<void() &&>> tasks{};
+        Semaphore sem{0};
+        cj::Deque<fu2::unique_function<void() &&>> tasks;
     };
 
     std::vector<SemDeque> _deques;

@@ -12,7 +12,6 @@
 #include <stop_token>
 #include <thread>
 
-#include "blocking.hpp"
 #include "function2/function2.hpp"
 #include "thiefpool.hpp"
 #include "threadpool.hpp"
@@ -131,7 +130,7 @@ struct Talker {
 };
 
 int main() {
-    test<Threadpool>();
+    test<Threadpool>();  // //
 
     std::cout << "Done!" << std::endl;
 }
