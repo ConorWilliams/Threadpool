@@ -1,6 +1,7 @@
 
-// Code in the file below is an adaptation of Jeff Preshing's portable + lightweight semaphore
-// implementations, originally from https://github.com/preshing/cpp11-on-multicore/blob/master/common/sema.h
+// Code in the file below is an adaptation by Conor Williams of Jeff Preshing's portable + lightweight
+// semaphore implementations, originally from:
+// https://github.com/preshing/cpp11-on-multicore/blob/master/common/sema.h
 //
 // LICENSE:
 //
@@ -27,6 +28,8 @@
 
 #include <atomic>
 #include <cassert>
+
+namespace detail {
 
 #if defined(_WIN32)
 //---------------------------------------------------------
@@ -136,55 +139,55 @@ class Semaphore {
 
 #endif
 
-//---------------------------------------------------------
-// LightweightSemaphore
-//---------------------------------------------------------
-class LightweightSemaphore {
+}  // namespace detail
+
+class counting_semaphore {
+  public:
+    explicit counting_semaphore(std::ptrdiff_t desired) : m_count(desired) { assert(desired >= 0); }
+
+    void release(std::ptrdiff_t update = 1) {
+        std::ptrdiff_t oldCount = m_count.fetch_add(update, std::memory_order_release);
+        std::ptrdiff_t toRelease = -oldCount < update ? -oldCount : update;
+        if (toRelease > 0) {
+            m_sema.signal(toRelease);
+        }
+    }
+
+    void acquire() {
+        if (!try_aquire()) {
+            waitWithPartialSpinning();
+        }
+    }
+
+    bool try_aquire() {
+        std::ptrdiff_t oldCount = m_count.load(std::memory_order_relaxed);
+        return (oldCount > 0
+                && m_count.compare_exchange_strong(oldCount, oldCount - 1, std::memory_order_acquire));
+    }
+
   private:
-    std::atomic<int> m_count;
-    Semaphore m_sema;
+    std::atomic<std::ptrdiff_t> m_count;
+    detail::Semaphore m_sema;
 
     void waitWithPartialSpinning() {
-        int oldCount;
+        std::ptrdiff_t oldCount;
         // Is there a better way to set the initial spin count? If we lower it to 1000, testBenaphore becomes
         // 15x slower on my Core i7-5930K Windows PC, as threads start hitting the kernel semaphore.
-        int spin = 10000;
+        std::ptrdiff_t spin = 10000;
         while (spin--) {
             oldCount = m_count.load(std::memory_order_relaxed);
-            if ((oldCount > 0)
-                && m_count.compare_exchange_strong(oldCount, oldCount - 1, std::memory_order_acquire))
+            if (oldCount > 0
+                && m_count.compare_exchange_strong(oldCount, oldCount - 1, std::memory_order_acquire)) {
                 return;
-            std::atomic_signal_fence(
-                std::memory_order_acquire);  // Prevent the compiler from collapsing the loop.
+            }
+            // Prevent the compiler from collapsing the loop.
+            std::atomic_signal_fence(std::memory_order_acquire);
         }
         oldCount = m_count.fetch_sub(1, std::memory_order_acquire);
         if (oldCount <= 0) {
             m_sema.wait();
         }
     }
-
-  public:
-    LightweightSemaphore(int initialCount = 0) : m_count(initialCount) { assert(initialCount >= 0); }
-
-    bool tryWait() {
-        int oldCount = m_count.load(std::memory_order_relaxed);
-        return (oldCount > 0
-                && m_count.compare_exchange_strong(oldCount, oldCount - 1, std::memory_order_acquire));
-    }
-
-    void wait() {
-        if (!tryWait()) waitWithPartialSpinning();
-    }
-
-    void signal(int count = 1) {
-        int oldCount = m_count.fetch_add(count, std::memory_order_release);
-        int toRelease = -oldCount < count ? -oldCount : count;
-        if (toRelease > 0) {
-            m_sema.signal(toRelease);
-        }
-    }
 };
-
-typedef LightweightSemaphore DefaultSemaphoreType;
 
 #endif  // __CPP11OM_SEMAPHORE_H__
