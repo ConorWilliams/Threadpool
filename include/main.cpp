@@ -1,17 +1,20 @@
 
 
 #include <atomic>
+#include <cassert>
 #include <chrono>
 #include <function2/function2.hpp>
 #include <future>
 #include <iostream>
 #include <iterator>
+#include <memory>
 #include <ratio>
 #include <stop_token>
 #include <thread>
 
 #include "blocking.hpp"
 #include "function2/function2.hpp"
+#include "thiefpool.hpp"
 #include "threadpool.hpp"
 
 struct clock_tick {
@@ -33,7 +36,7 @@ template <typename... Args> int tock(clock_tick &x, Args &&...args) {
 
     auto const time = duration_cast<milliseconds>(stop - x.start).count();
 
-    std::cout << x.name << ": " << time << "/us";
+    std::cout << x.name << ": " << time << "/ms";
 
     (static_cast<void>(std::cout << ',' << ' ' << args), ...);
 
@@ -42,49 +45,67 @@ template <typename... Args> int tock(clock_tick &x, Args &&...args) {
     return time;
 }
 
-std::size_t threads = 12;
-
 template <typename TP> void test() {
-    TP pool(threads);
+    std::atomic_int_fast64_t threads = 2;
+    {
+        auto fast_jobs = tick("fast_jobs");
 
-    std::size_t jobs = 1000000;
+        std::atomic_int_fast64_t count;
 
-    std::vector<std::future<decltype(std::chrono::system_clock::now())>> _futures;
+        {
+            TP pool(threads);
 
-    _futures.reserve(jobs);
+            for (int i = 0; i < threads * 1000000; i++) {
+                pool.execute([&]() { count++; });
+            }
+        }
 
-    auto fast_jobs = tick("fast_jobs");
+        tock(fast_jobs, count);
 
-    for (size_t i = 0; i < jobs; i++) {
-        _futures.push_back(pool.execute([&]() { return std::chrono::system_clock::now(); }));
+        assert(count == threads * 1000000);
     }
 
-    //
+    {
+        auto slow_jobs = tick("slow_jobs");
 
-    for (auto &f : _futures) {
-        f.get();
+        std::atomic_int_fast64_t count;
+
+        {
+            TP pool(threads);
+
+            for (int i = 0; i < threads * 10; i++) {
+                pool.execute([&]() {
+                    ++count;
+                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                });
+            }
+        }
+
+        tock(slow_jobs, count);
+
+        assert(count == threads * 10);
     }
 
-    tock(fast_jobs);
+    {
+        auto het_jobs = tick("het_jobs");
 
-    _futures.clear();
+        std::atomic_int_fast64_t count;
 
-    auto slow_jobs = tick("slow_jobs");
+        {
+            TP pool(threads);
 
-    for (size_t i = 0; i < 100; i++) {
-        _futures.push_back(pool.execute([&]() {
-            std::this_thread::sleep_for(std::chrono::milliseconds(200));
-            return std::chrono::system_clock::now();
-        }));
+            for (int i = 0; i < threads * 10; i++) {
+                pool.execute([&, i]() {
+                    ++count;
+                    std::this_thread::sleep_for(std::chrono::milliseconds(10 * i));
+                });
+            }
+        }
+
+        tock(het_jobs, count);
+
+        assert(count == threads * 10);
     }
-
-    //
-
-    for (auto &f : _futures) {
-        f.get();
-    }
-
-    tock(slow_jobs);
 }
 
 std::atomic<int> count;
@@ -110,7 +131,7 @@ struct Talker {
 };
 
 int main() {
-    test<ThreadPool>();
+    test<Threadpool>();
 
     std::cout << "Done!" << std::endl;
 }

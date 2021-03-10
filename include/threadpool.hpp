@@ -1,45 +1,46 @@
 
 
+#include <bits/c++config.h>
+
 #include <atomic>
 
+#include "deque.hpp"
+#include "function2/function2.hpp"
 #include "semaphore.hpp"
 #include "shared.hpp"
-#include "thiefdeque.hpp"
 
 class Threadpool {
   public:
-    explicit Threadpool(std::size_t threads = std::thread::hardware_concurrency()) {
+    explicit Threadpool(std::size_t threads = std::thread::hardware_concurrency()) : _sem(0) {
         for (std::size_t i = 0; i < threads; ++i) {
             _threads.emplace_back([&](std::stop_token tok) {
-                //
-                std::unique_lock<std::mutex> lock(_mutex, std::defer_lock);
-
                 while (true) {
-                    lock.lock();
+                    // Wait for work/stop-signal to be sent
+                    _sem.acquire();
 
-                    _cv.wait(lock, [&]() { return !_tasks.empty() || tok.stop_requested(); });
-
-                    if (tok.stop_requested() && _tasks.empty()) {
+                    // If sent stop-signal
+                    if (tok.stop_requested() && _in_flight.load(std::memory_order_acquire) == 0) {
                         return;
                     }
 
-                    auto one_shot = std::move(_tasks.front());
-
-                    _tasks.pop();
-
-                    lock.unlock();
-
-                    std::invoke(std::move(one_shot));
+                    // Spin untill (one) job completed
+                    while (true) {
+                        if (std::optional one_shot = _tasks.steal()) {
+                            _in_flight.fetch_sub(1, std::memory_order_release);
+                            std::invoke(std::move(*one_shot));
+                            break;
+                        }
+                    }
                 }
             });
         }
     }
 
-    ~ThreadPool() {
+    ~Threadpool() {
         for (auto &thread : _threads) {
             thread.request_stop();
         }
-        _cv.notify_all();
+        _sem.release(_threads.size());
     }
 
     template <typename F, typename... Args> auto execute(F &&f, Args &&...args) {
@@ -48,18 +49,18 @@ class Threadpool {
 
         auto future = task.get_future();
 
-        std::unique_lock<std::mutex> lock(_mutex);
-
         _tasks.emplace(std::move(task));
 
-        lock.unlock();
+        _in_flight.fetch_add(1, std::memory_order_release);
 
-        _cv.notify_one();
+        _sem.release();
 
         return future;
     }
 
   private:
-    LightweightSemaphore _sem;
-    std::atomic<std::uint64_t> _in_flight;
+    std::atomic<std::int64_t> _in_flight;
+    counting_semaphore _sem;
+    cj::Deque<fu2::unique_function<void() &&>> _tasks;
+    std::vector<std::jthread> _threads;
 };
