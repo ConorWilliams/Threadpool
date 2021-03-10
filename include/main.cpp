@@ -46,46 +46,46 @@ template <typename... Args> int tock(clock_tick &x, Args &&...args) {
 template <typename TP> void test() {
     std::atomic_int_fast64_t threads = 10;
 
-    // {
-    //     auto fast_jobs = tick("fast_jobs");
+    {
+        auto fast_jobs = tick("fast_jobs");
 
-    //     std::atomic_int_fast64_t count;
+        std::atomic_int_fast64_t count;
 
-    //     {
-    //         TP pool(threads);
+        {
+            TP pool(threads);
 
-    //         for (int i = 0; i < threads * 100000; i++) {
-    //             pool.enqueue([&]() { count++; });
-    //         }
-    //     }
+            for (int i = 0; i < threads * 100000; i++) {
+                pool.enqueue([&]() { count++; });
+            }
+        }
 
-    //     tock(fast_jobs, count);
+        tock(fast_jobs, count);
 
-    //     assert(count == threads * 100000);
-    // }
-
-    // {
-    //     auto slow_jobs = tick("slow_jobs");
-
-    //     std::atomic_int_fast64_t count;
-
-    //     {
-    //         TP pool(threads);
-
-    //         for (int i = 0; i < threads * 10; i++) {
-    //             pool.enqueue([&]() {
-    //                 ++count;
-    //                 std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    //             });
-    //         }
-    //     }
-
-    //     tock(slow_jobs, count);
-
-    //     assert(count == threads * 10);
-    // }
+        assert(count == threads * 100000);
+    }
 
     {
+        auto slow_jobs = tick("slow_jobs");
+
+        std::atomic_int_fast64_t count;
+
+        {
+            TP pool(threads);
+
+            for (int i = 0; i < threads * 10; i++) {
+                pool.enqueue([&]() {
+                    ++count;
+                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                });
+            }
+        }
+
+        tock(slow_jobs, count);
+
+        assert(count == threads * 10);
+    }
+
+    for (std::size_t i = 0; i < 10; i++) {
         auto het_jobs = tick("het_jobs");
 
         std::atomic_int_fast64_t count;
@@ -93,17 +93,17 @@ template <typename TP> void test() {
         {
             TP pool(threads);
 
-            for (int i = 0; i < threads * 2; i++) {
+            for (int i = 0; i < threads * 10; i++) {
                 pool.enqueue([&, i]() {
                     ++count;
-                    std::this_thread::sleep_for(std::chrono::milliseconds((i % threads) + 1));
+                    std::this_thread::sleep_for(std::chrono::milliseconds((i % threads) * 10));
                 });
             }
         }
 
         tock(het_jobs, count);
 
-        assert(count == threads * 2);
+        assert(count == threads * 10);
     }
 }
 
@@ -130,7 +130,7 @@ struct Talker {
 };
 
 int main() {
-    test<riften::MonoPool>();  // //
+    test<riften::MultiPool>();  // //
 
     std::cout << "Done!" << std::endl;
 }

@@ -1,10 +1,14 @@
 #pragma once
 
+#include <bits/c++config.h>
+
 #include <atomic>
 #include <cassert>
 #include <cstdint>
 #include <functional>
 #include <future>
+#include <ratio>
+#include <thread>
 #include <utility>
 
 #include "deque.hpp"
@@ -50,20 +54,21 @@ class MonoPool {
     explicit MonoPool(std::size_t threads = std::thread::hardware_concurrency()) : _sem(0) {
         for (std::size_t i = 0; i < threads; ++i) {
             _threads.emplace_back([&](std::stop_token tok) {
-                while (true) {
+                while (!tok.stop_requested() || _in_flight.load(std::memory_order_acquire) > 0) {
                     // Wait to be signalled
                     _sem.acquire();
 
-                    if (tok.stop_requested() && !_in_flight.load(std::memory_order::acquire)) {
-                        return;
-                    }
-
-                    // Spin until (one) job completed
-                    while (true) {
+                    // Spin until the task are done
+                    while (_in_flight.load(std::memory_order_acquire) != 0) {
                         if (std::optional one_shot = _tasks.steal()) {
-                            _in_flight.fetch_sub(1, std::memory_order::release);
+                            // See: https://www.boost.org/doc/libs/1_75_0/doc/html/atomic/usage_examples.html
+                            if (_in_flight.fetch_sub(1, std::memory_order_release) == 1) {
+                                // Got the last task
+                                std::atomic_thread_fence(std::memory_order_acquire);
+                                std::invoke(std::move(*one_shot));
+                                break;
+                            }
                             std::invoke(std::move(*one_shot));
-                            break;
                         }
                     }
                 }
@@ -75,6 +80,7 @@ class MonoPool {
         for (auto &thread : _threads) {
             thread.request_stop();
         }
+        // Must release any waiting threads
         _sem.release(_threads.size());
     }
 
@@ -86,7 +92,7 @@ class MonoPool {
 
         _tasks.emplace(std::move(task));
 
-        _in_flight.fetch_add(1, std::memory_order::release);
+        _in_flight.fetch_add(1, std::memory_order_relaxed);
 
         _sem.release();
 
@@ -105,21 +111,23 @@ class MultiPool {
     explicit MultiPool(std::size_t threads = std::thread::hardware_concurrency()) : _deques(threads) {
         for (std::size_t i = 0; i < threads; ++i) {
             _threads.emplace_back([&, id = i](std::stop_token tok) {
-                while (true) {
-                    // Wait for work/stop-signal to be sent
+                while (!tok.stop_requested() || _in_flight.load(std::memory_order_acquire) > 0) {
+                    // Wait to be signalled
                     _deques[id].sem.acquire();
 
-                    std::cout << id << std::endl;
-
-                    if (tok.stop_requested() && !_in_flight.load(std::memory_order::acquire)) {
-                        return;
-                    }
-
-                    // Spin until (one) job completed
-                    while (true) {
-                        if (std::optional one_shot = _deques[id].tasks.steal()) {
-                            _in_flight.fetch_sub(1, std::memory_order::release);
+                    // Spin until the task are done
+                    for (std::size_t j = id;; j = (j + 1) % _deques.size()) {
+                        if (std::optional one_shot = _deques[j].tasks.steal()) {
+                            // See: https://www.boost.org/doc/libs/1_75_0/doc/html/atomic/usage_examples.html
+                            if (_in_flight.fetch_sub(1, std::memory_order_release) == 1) {
+                                // Got the last task
+                                std::atomic_thread_fence(std::memory_order_acquire);
+                                std::invoke(std::move(*one_shot));
+                                break;
+                            }
                             std::invoke(std::move(*one_shot));
+                        }
+                        if (_in_flight.load(std::memory_order_acquire) == 0) {
                             break;
                         }
                     }
@@ -135,6 +143,10 @@ class MultiPool {
         for (auto &d : _deques) {
             d.sem.release();
         }
+
+        // for (auto &d : _deques) {
+        //     std::cout << d.tasks.empty() << std::endl;
+        // }
     }
 
     template <typename F, typename... Args> auto enqueue(F &&f, Args &&...args) {
@@ -143,11 +155,9 @@ class MultiPool {
 
         auto future = task.get_future();
 
-        // std::cout << "assigning" << count % _deques.size() << std::endl;
-
         _deques[count % _deques.size()].tasks.emplace(std::move(task));
 
-        _in_flight.fetch_add(1, std::memory_order::release);
+        _in_flight.fetch_add(1, std::memory_order_relaxed);
 
         _deques[count % _deques.size()].sem.release();
 
@@ -157,12 +167,12 @@ class MultiPool {
     }
 
   private:
-    std::size_t count = 0;
-
     struct NamesPair {
         Semaphore sem{0};
         Deque<fu2::unique_function<void() &&>> tasks;
     };
+
+    std::size_t count = 0;
 
     std::atomic<std::int64_t> _in_flight;
     std::vector<NamesPair> _deques;
