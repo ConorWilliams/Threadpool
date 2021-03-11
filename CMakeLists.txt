@@ -26,8 +26,7 @@ include(cmake/CPM.cmake)
 
 CPMAddPackage("gh:TheLartians/PackageProject.cmake@1.4.1")
 CPMAddPackage("gh:Naios/function2#4.1.0")
-
-
+CPMAddPackage("gh:ConorWilliams/ConcurrentDeque#v1.0.0")
 
 
 # ---- Create library ----
@@ -48,7 +47,7 @@ target_compile_options(Threadpool INTERFACE -Wall -Wextra -Wpedantic)
 target_compile_options(Threadpool INTERFACE "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/permissive>")
 
 # Link dependencies
-target_link_libraries(Threadpool INTERFACE function2::function2 ${CMAKE_THREAD_LIBS_INIT})
+target_link_libraries(Threadpool INTERFACE function2::function2 RiftenDeque::RiftenDeque ${CMAKE_THREAD_LIBS_INIT})
 
 target_include_directories(
   Threadpool INTERFACE $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>

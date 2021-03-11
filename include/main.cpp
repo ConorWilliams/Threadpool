@@ -130,7 +130,7 @@ struct Talker {
 };
 
 int main() {
-    test<riften::MultiPool>();  // //
+    test<riften::Threadpool>();  // //
 
     std::cout << "Done!" << std::endl;
 }
