@@ -59,14 +59,3 @@ include(${doctest_SOURCE_DIR}/scripts/cmake/doctest.cmake)
 doctest_discover_tests(${PROJECT_NAME})
 
 
-# ---- Benchmarking ----
-
-
-add_executable(ThiefBench "${CMAKE_CURRENT_SOURCE_DIR}/bench.cpp")
-
-# Link dependencies
-target_link_libraries(ThiefBench PUBLIC  doctest::doctest RiftenThiefpool::RiftenThiefpool ${CMAKE_THREAD_LIBS_INIT})
-
-
-
-
