@@ -2,10 +2,9 @@ cmake_minimum_required(VERSION 3.14 FATAL_ERROR)
 
 # ---- Project ----
 
-# Note: update this to your new project's name and version
 project(
-  Threadpool
-  VERSION 0.1
+  RiftenThiefpool
+  VERSION 0.2.0
   LANGUAGES CXX
 )
 
@@ -26,40 +25,28 @@ include(cmake/CPM.cmake)
 
 CPMAddPackage("gh:TheLartians/PackageProject.cmake@1.4.1")
 CPMAddPackage("gh:Naios/function2#4.1.0")
-CPMAddPackage("gh:ConorWilliams/ConcurrentDeque#v1.0.0")
+CPMAddPackage("gh:ConorWilliams/ConcurrentDeque#v1.1.0")
 
 
 # ---- Create library ----
 
 
+add_library(${PROJECT_NAME} INTERFACE)
 
-# Note: for header-only libraries change all PUBLIC flags to INTERFACE and create an interface
-# target: add_library(Threadpool INTERFACE)
-add_library(Threadpool INTERFACE ${sources})
+target_compile_features(${PROJECT_NAME} INTERFACE cxx_std_20)
 
-# target_compile_features(Threadpool INTERFACE cxx_semaphore)
-
-target_compile_features(Threadpool INTERFACE cxx_std_20)
-
-target_compile_options(Threadpool INTERFACE -Wall -Wextra -Wpedantic)
-
-# Being a cross-platform target, we enforce standards conformance on MSVC
-target_compile_options(Threadpool INTERFACE "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/permissive>")
+target_compile_options(${PROJECT_NAME} INTERFACE -Wall -Wextra -Wpedantic)
 
 # Link dependencies
-target_link_libraries(Threadpool INTERFACE function2::function2 RiftenDeque::RiftenDeque ${CMAKE_THREAD_LIBS_INIT})
+target_link_libraries(${PROJECT_NAME} INTERFACE function2::function2 RiftenDeque::RiftenDeque ${CMAKE_THREAD_LIBS_INIT})
 
 target_include_directories(
-  Threadpool INTERFACE $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
-                    $<INSTALL_INTERFACE:include/${PROJECT_NAME}-${PROJECT_VERSION}>
+  ${PROJECT_NAME} INTERFACE $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+                            $<INSTALL_INTERFACE:include/${PROJECT_NAME}-${PROJECT_VERSION}>
 )
 
 # ---- Create an installable target ----
-# this allows users to install and find the library via `find_package()`.
 
-# the location where the project's version header will be placed should match the project's regular
-# header paths
-string(TOLOWER ${PROJECT_NAME}/version.h VERSION_HEADER_LOCATION)
 
 packageProject(
   NAME ${PROJECT_NAME}
@@ -68,17 +55,7 @@ packageProject(
   BINARY_DIR ${PROJECT_BINARY_DIR}
   INCLUDE_DIR ${PROJECT_SOURCE_DIR}/include
   INCLUDE_DESTINATION include/${PROJECT_NAME}-${PROJECT_VERSION}
-  VERSION_HEADER "${VERSION_HEADER_LOCATION}"
   COMPATIBILITY SameMajorVersion
-  DEPENDENCIES ""
+  DEPENDENCIES "function2, RiftenDeque"
 )
 
-
-# ---- Conditionally build examples ----
-
-option(BUILD_EXAMPLES "Build the examples" OFF)
-
-if(BUILD_EXAMPLES)
- add_executable(example "include/main.cpp")
- target_link_libraries(example PUBLIC Threadpool::Threadpool)
-endif()

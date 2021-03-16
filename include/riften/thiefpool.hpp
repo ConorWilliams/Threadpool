@@ -15,6 +15,8 @@
 
 namespace riften {
 
+namespace detail {
+
 // Bind F and args... into nullary lambda
 template <typename F, typename... Args> auto bind(F &&f, Args &&...arg) {
     return [f = std::forward<F>(f), ... arg = std::forward<Args>(arg)]() mutable -> decltype(auto) {
@@ -47,9 +49,11 @@ template <std::invocable F> class NullaryOneShot {
 
 template <typename F> NullaryOneShot(F &&) -> NullaryOneShot<F>;
 
-class Threadpool {
+}  // namespace detail
+
+class Thiefpool {
   public:
-    explicit Threadpool(std::size_t threads = std::thread::hardware_concurrency()) : _deques(threads) {
+    explicit Thiefpool(std::size_t threads = std::thread::hardware_concurrency()) : _deques(threads) {
         for (std::size_t i = 0; i < threads; ++i) {
             _threads.emplace_back([&, id = i](std::stop_token tok) {
                 while (!tok.stop_requested() || _in_flight.load(std::memory_order_acquire) > 0) {
@@ -80,7 +84,7 @@ class Threadpool {
         }
     }
 
-    ~Threadpool() {
+    ~Thiefpool() {
         for (auto &t : _threads) {
             t.request_stop();
         }
@@ -91,7 +95,7 @@ class Threadpool {
 
     template <typename F, typename... Args> auto enqueue(F &&f, Args &&...args) {
         //
-        auto task = NullaryOneShot(bind(std::forward<F>(f), std::forward<Args>(args)...));
+        auto task = detail::NullaryOneShot(detail::bind(std::forward<F>(f), std::forward<Args>(args)...));
 
         auto future = task.get_future();
 

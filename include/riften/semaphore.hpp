@@ -29,6 +29,8 @@
 #include <atomic>
 #include <cassert>
 
+namespace riften {
+
 namespace detail {
 
 #if defined(_WIN32)
@@ -189,3 +191,5 @@ class Semaphore {
         }
     }
 };
+
+}  // namespace riften
