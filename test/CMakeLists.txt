@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.14 FATAL_ERROR)
 
 # ---- Project ----
 
-project(RiftenTheifpoolTest 
+project(RiftenThiefpoolTest 
         LANGUAGES CXX
 )
 
@@ -34,9 +34,9 @@ else()
 endif()
 
 
-# ---- Create executable ----
+# ---- Tests ----
 
-file(GLOB sources CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/*.cpp)
+file(GLOB sources CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/*_test.cpp)
 add_executable(${PROJECT_NAME} "${sources}")
 
 # Link dependencies
@@ -52,11 +52,21 @@ if(NOT TEST_INSTALLED_VERSION)
   endif()
 endif()
 
-
-
 enable_testing()
 
 include(${doctest_SOURCE_DIR}/scripts/cmake/doctest.cmake)
 
 doctest_discover_tests(${PROJECT_NAME})
+
+
+# ---- Benchmarking ----
+
+
+add_executable(ThiefBench "${CMAKE_CURRENT_SOURCE_DIR}/bench.cpp")
+
+# Link dependencies
+target_link_libraries(ThiefBench PUBLIC  doctest::doctest RiftenThiefpool::RiftenThiefpool ${CMAKE_THREAD_LIBS_INIT})
+
+
+
 
