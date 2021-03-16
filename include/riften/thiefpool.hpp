@@ -19,7 +19,7 @@ namespace riften {
 
 namespace detail {
 
-// Bind F and args... into nullary lambda
+// Bind F and args... into a nullary lambda
 template <typename... Args, std::invocable<Args...> F> auto bind(F &&f, Args &&...arg) {
     return [f = std::forward<F>(f), ... arg = std::forward<Args>(arg)]() mutable -> decltype(auto) {
         return std::invoke(std::forward<F>(f), std::forward<Args>(arg)...);
@@ -53,8 +53,8 @@ template <typename F> NullaryOneShot(F &&) -> NullaryOneShot<F>;
 
 }  // namespace detail
 
-// Lightweight, fast, work-stealing thread-pool for C++20. Built on the `riften::Thiefpool` concurrent
-// deque.
+// Lightweight, fast, work-stealing thread-pool for C++20. Built on the lock-free concurrent `riften::Deque`.
+// Upon destruction the threadpool blocks until all tasks have been completed and all threads have joined.
 class Thiefpool {
   public:
     // Construct a `Thiefpool` with `num_threads` threads.
@@ -89,7 +89,8 @@ class Thiefpool {
     }
 
     // Enqueue callable `f` into the threadpool. It will be called by perfectly forwarding `args...` (unlike
-    // std::async/std::bind/std::thread). Returns a `std::future<...>` which does not block upon destruction.
+    // `std::async`/`std::bind`/`std::thread`). Returns a `std::future<...>` which does not block upon
+    // destruction.
     template <typename... Args, std::invocable<Args...> F> auto enqueue(F &&f, Args &&...args) {
         //
         auto task = detail::NullaryOneShot(detail::bind(std::forward<F>(f), std::forward<Args>(args)...));
@@ -105,8 +106,8 @@ class Thiefpool {
     }
 
     // Enqueue callable `f` into the threadpool. It will be called by perfectly forwarded `args...` (unlike
-    // std::async/std::bind/std::thread). This version does *not* return a handle to the called function and
-    // thus only accepts functions which return void.
+    // `std::async`/`std::bind`/`std::thread`). This version does *not* return a handle to the called function
+    // and thus only accepts functions which return void.
     template <typename... Args, std::invocable<Args...> F> void enqueue_detach(F &&f, Args &&...args) {
         // Cleaner error message than concept
         static_assert(std::is_same_v<void, std::invoke_result_t<F, Args...>>, "Function must return void.");

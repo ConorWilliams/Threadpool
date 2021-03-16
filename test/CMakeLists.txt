@@ -2,9 +2,7 @@ cmake_minimum_required(VERSION 3.14 FATAL_ERROR)
 
 # ---- Project ----
 
-project(RiftenThiefpoolTest 
-        LANGUAGES CXX
-)
+project(RiftenThiefpoolTest)
 
 # ---- Options ----
 
@@ -41,16 +39,6 @@ add_executable(${PROJECT_NAME} "${sources}")
 
 # Link dependencies
 target_link_libraries(${PROJECT_NAME} PUBLIC  doctest::doctest RiftenThiefpool::RiftenThiefpool ${CMAKE_THREAD_LIBS_INIT})
-
-# enable compiler warnings
-if(NOT TEST_INSTALLED_VERSION)
-  if(CMAKE_CXX_COMPILER_ID MATCHES "Clang" OR CMAKE_CXX_COMPILER_ID MATCHES "GNU")
-    target_compile_options(RiftenThiefpool INTERFACE -Wall -Wpedantic -Wextra -Werror)
-  elseif(MSVC)
-    target_compile_options(RiftenThiefpool INTERFACE /W4 /WX)
-    target_compile_definitions(${PROJECT_NAME} PUBLIC DOCTEST_CONFIG_USE_STD_HEADERS)
-  endif()
-endif()
 
 enable_testing()
 
