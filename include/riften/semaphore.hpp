@@ -162,21 +162,20 @@ class Semaphore {
             if (old > 0 && m_count.compare_exchange_strong(old, 0, acquire)) {
                 return;
             }
-
             std::atomic_signal_fence(acquire);  // Prevent the compiler from collapsing the loop.
         }
 
+        std::ptrdiff_t old = m_count.load(relaxed);
+
         for (;;) {
-            std::ptrdiff_t old = m_count.load(relaxed);
             if (old <= 0) {
-                if (m_count.compare_exchange_strong(old, old - 1, acquire)) {
+                if (m_count.compare_exchange_strong(old, old - 1, acq_rel, relaxed)) {
                     m_sema.wait();
                     return;
                 }
-            } else if (m_count.compare_exchange_strong(old, 0, acquire)) {
+            } else if (m_count.compare_exchange_strong(old, 0, acq_rel, relaxed)) {
                 return;
             }
-            std::atomic_signal_fence(acquire);  // Prevent the compiler from collapsing the loop.
         }
     }
 
@@ -185,6 +184,7 @@ class Semaphore {
     detail::Semaphore m_sema;
 
     static constexpr std::memory_order relaxed = std::memory_order_relaxed;
+    static constexpr std::memory_order acq_rel = std::memory_order_acq_rel;
     static constexpr std::memory_order acquire = std::memory_order_acquire;
 };
 
