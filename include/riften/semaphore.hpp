@@ -185,15 +185,15 @@ class Semaphore {
         if (m_count.fetch_sub(1, std::memory_order_acquire) <= 0) {
             m_sema.wait();
         }
-        try_aquire_all();
+        try_acquire_all();
     }
 
-    bool try_aquire() {
+    bool try_acquire() {
         std::ptrdiff_t old = m_count.load(std::memory_order_relaxed);
         return (old > 0 && m_count.compare_exchange_strong(old, old - 1, std::memory_order_acquire));
     }
 
-    bool try_aquire_all() {
+    bool try_acquire_all() {
         std::ptrdiff_t old = m_count.load(std::memory_order_relaxed);
         return (old > 0 && m_count.compare_exchange_strong(old, 0, std::memory_order_acquire));
     }
