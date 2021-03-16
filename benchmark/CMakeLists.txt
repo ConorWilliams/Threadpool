@@ -2,10 +2,7 @@ cmake_minimum_required(VERSION 3.14 FATAL_ERROR)
 
 # ---- Project ----
 
-project(RiftenThiefpoolBench 
-        LANGUAGES CXX
-)
-
+project(RiftenThiefpoolBench LANGUAGES CXX)
 
 # ---- Include guards ----
 
@@ -30,7 +27,3 @@ add_executable(${PROJECT_NAME} "${CMAKE_CURRENT_SOURCE_DIR}/bench.cpp")
 
 # Link dependencies
 target_link_libraries(${PROJECT_NAME} PUBLIC RiftenThiefpool::RiftenThiefpool ${CMAKE_THREAD_LIBS_INIT})
-
-
-
-

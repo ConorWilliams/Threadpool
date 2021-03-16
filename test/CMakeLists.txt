@@ -31,19 +31,18 @@ else()
   CPMAddPackage(NAME RiftenThiefpool SOURCE_DIR ${CMAKE_CURRENT_LIST_DIR}/..)
 endif()
 
-
 # ---- Tests ----
 
 file(GLOB sources CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/*_test.cpp)
 add_executable(${PROJECT_NAME} "${sources}")
 
 # Link dependencies
-target_link_libraries(${PROJECT_NAME} PUBLIC  doctest::doctest RiftenThiefpool::RiftenThiefpool ${CMAKE_THREAD_LIBS_INIT})
+target_link_libraries(
+  ${PROJECT_NAME} PUBLIC doctest::doctest RiftenThiefpool::RiftenThiefpool ${CMAKE_THREAD_LIBS_INIT}
+)
 
 enable_testing()
 
 include(${doctest_SOURCE_DIR}/scripts/cmake/doctest.cmake)
 
 doctest_discover_tests(${PROJECT_NAME})
-
-

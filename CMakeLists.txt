@@ -19,7 +19,7 @@ endif()
 
 # ---- Add dependencies ----
 
-find_package( Threads )
+find_package(Threads)
 
 include(cmake/CPM.cmake)
 
@@ -27,9 +27,7 @@ CPMAddPackage("gh:TheLartians/PackageProject.cmake@1.4.1")
 CPMAddPackage("gh:Naios/function2#4.1.0")
 CPMAddPackage("gh:ConorWilliams/ConcurrentDeque#v1.1.0")
 
-
 # ---- Create library ----
-
 
 add_library(${PROJECT_NAME} INTERFACE)
 
@@ -38,7 +36,9 @@ target_compile_features(${PROJECT_NAME} INTERFACE cxx_std_20)
 target_compile_options(${PROJECT_NAME} INTERFACE -Wall -Wextra -Wpedantic)
 
 # Link dependencies
-target_link_libraries(${PROJECT_NAME} INTERFACE function2::function2 RiftenDeque::RiftenDeque ${CMAKE_THREAD_LIBS_INIT})
+target_link_libraries(
+  ${PROJECT_NAME} INTERFACE function2::function2 RiftenDeque::RiftenDeque ${CMAKE_THREAD_LIBS_INIT}
+)
 
 target_include_directories(
   ${PROJECT_NAME} INTERFACE $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
@@ -46,7 +46,6 @@ target_include_directories(
 )
 
 # ---- Create an installable target ----
-
 
 packageProject(
   NAME ${PROJECT_NAME}
@@ -58,4 +57,3 @@ packageProject(
   COMPATIBILITY SameMajorVersion
   DEPENDENCIES "function2, RiftenDeque"
 )
-
