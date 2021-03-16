@@ -155,53 +155,37 @@ class Semaphore {
         }
     }
 
-    void acquire() {
-        // Is there a better way to set the initial spin count? If we lower it to 1000, testBenaphore
-        // becomes 15x slower on my Core i7-5930K Windows PC, as threads start hitting the kernel
-        // semaphore.
-        for (std::ptrdiff_t spin = 0; spin < 10'000; ++spin) {
-            std::ptrdiff_t count = m_count.load(std::memory_order_relaxed);
-            if (count > 0 && m_count.compare_exchange_strong(count, count - 1, std::memory_order_acquire)) {
-                return;
-            }
-            // Prevent the compiler from collapsing the loop.
-            std::atomic_signal_fence(std::memory_order_acquire);
-        }
-        if (m_count.fetch_sub(1, std::memory_order_acquire) <= 0) {
-            m_sema.wait();
-        }
-    }
-
+    // If possible consumes all counts in the semaphore, otherwise blocks until released.
     void acquire_many() {
         for (std::ptrdiff_t spin = 0; spin < 10'000; ++spin) {
-            std::ptrdiff_t old = m_count.load(std::memory_order_relaxed);
-            if (old > 0 && m_count.compare_exchange_strong(old, 0, std::memory_order_acquire)) {
+            std::ptrdiff_t old = m_count.load(relaxed);
+            if (old > 0 && m_count.compare_exchange_strong(old, 0, acquire)) {
                 return;
             }
-            // Prevent the compiler from collapsing the loop.
-            std::atomic_signal_fence(std::memory_order_acquire);
+
+            std::atomic_signal_fence(acquire);  // Prevent the compiler from collapsing the loop.
         }
 
-        // It is possible we now only acquire one
-
-        if (m_count.fetch_sub(1, std::memory_order_acquire) <= 0) {
-            m_sema.wait();
+        for (;;) {
+            std::ptrdiff_t old = m_count.load(relaxed);
+            if (old <= 0) {
+                if (m_count.compare_exchange_strong(old, old - 1, acquire)) {
+                    m_sema.wait();
+                    return;
+                }
+            } else if (m_count.compare_exchange_strong(old, 0, acquire)) {
+                return;
+            }
+            std::atomic_signal_fence(acquire);  // Prevent the compiler from collapsing the loop.
         }
-    }
-
-    bool try_acquire() {
-        std::ptrdiff_t old = m_count.load(std::memory_order_relaxed);
-        return (old > 0 && m_count.compare_exchange_strong(old, old - 1, std::memory_order_acquire));
-    }
-
-    bool try_acquire_many() {
-        std::ptrdiff_t old = m_count.load(std::memory_order_relaxed);
-        return (old > 0 && m_count.compare_exchange_strong(old, 0, std::memory_order_acquire));
     }
 
   private:
     std::atomic<std::ptrdiff_t> m_count;
     detail::Semaphore m_sema;
+
+    static constexpr std::memory_order relaxed = std::memory_order_relaxed;
+    static constexpr std::memory_order acquire = std::memory_order_acquire;
 };
 
 }  // namespace riften
