@@ -6,7 +6,6 @@
 #include <cstdint>
 #include <functional>
 #include <future>
-#include <iostream>  //temp
 #include <ratio>
 #include <thread>
 #include <type_traits>
@@ -54,31 +53,30 @@ template <typename F> NullaryOneShot(F &&) -> NullaryOneShot<F>;
 
 }  // namespace detail
 
+// Lightweight, fast, work-stealing thread-pool for C++20. Built on the `riften::Thiefpool` concurrent
+// deque.
 class Thiefpool {
   public:
-    explicit Thiefpool(std::size_t threads = std::thread::hardware_concurrency()) : _deques(threads) {
-        for (std::size_t i = 0; i < threads; ++i) {
+    // Construct a `Thiefpool` with `num_threads` threads.
+    explicit Thiefpool(std::size_t num_threads = std::thread::hardware_concurrency()) : _deques(num_threads) {
+        for (std::size_t i = 0; i < num_threads; ++i) {
             _threads.emplace_back([&, id = i](std::stop_token tok) {
                 do {
                     // Wait to be signalled
-                    // std::cout << "sleep\n";
-
-                    _deques[id].sem.acquire_all();
-
-                    // std::cout << "wake\n";
+                    _deques[id].sem.acquire_many();
 
                     do {
-                        // Try and do the work just sent to this deque
-                        for (std::size_t i = 0; i < 1'000; i++) {
+                        // Do all our work
+                        while (!_deques[id].tasks.empty()) {
                             if (std::optional one_shot = _deques[id].tasks.steal()) {
-                                fetch_sub();
+                                _in_flight.fetch_sub(1, std::memory_order_release);
                                 std::invoke(std::move(*one_shot));
                             }
                         }
                         // Try and steal some work
-                        for (std::size_t i = id + 1; i < id + _deques.size(); i++) {
+                        for (std::size_t i = id; i < id + _deques.size(); i++) {
                             if (std::optional one_shot = _deques[i % _deques.size()].tasks.steal()) {
-                                fetch_sub();
+                                _in_flight.fetch_sub(1, std::memory_order_release);
                                 std::invoke(std::move(*one_shot));
                             }
                         }
@@ -90,6 +88,36 @@ class Thiefpool {
         }
     }
 
+    // Enqueue callable `f` into the threadpool. It will be called by perfectly forwarding `args...` (unlike
+    // std::async/std::bind/std::thread). Returns a `std::future<...>` which does not block upon destruction.
+    template <typename... Args, std::invocable<Args...> F> auto enqueue(F &&f, Args &&...args) {
+        //
+        auto task = detail::NullaryOneShot(detail::bind(std::forward<F>(f), std::forward<Args>(args)...));
+        auto future = task.get_future();
+
+        std::size_t i = count++ % _deques.size();
+
+        _in_flight.fetch_add(1, std::memory_order_relaxed);
+        _deques[i].tasks.emplace(std::move(task));
+        _deques[i].sem.release();
+
+        return future;
+    }
+
+    // Enqueue callable `f` into the threadpool. It will be called by perfectly forwarded `args...` (unlike
+    // std::async/std::bind/std::thread). This version does *not* return a handle to the called function and
+    // thus only accepts functions which return void.
+    template <typename... Args, std::invocable<Args...> F> void enqueue_detach(F &&f, Args &&...args) {
+        // Cleaner error message than concept
+        static_assert(std::is_same_v<void, std::invoke_result_t<F, Args...>>, "Function must return void.");
+
+        std::size_t i = count++ % _deques.size();
+
+        _in_flight.fetch_add(1, std::memory_order_relaxed);
+        _deques[i].tasks.emplace(detail::bind(std::forward<F>(f), std::forward<Args>(args)...));
+        _deques[i].sem.release();
+    }
+
     ~Thiefpool() {
         for (auto &t : _threads) {
             t.request_stop();
@@ -99,43 +127,16 @@ class Thiefpool {
         }
     }
 
-    template <typename... Args, std::invocable<Args...> F> auto enqueue(F &&f, Args &&...args) {
-        //
-        auto task = detail::NullaryOneShot(detail::bind(std::forward<F>(f), std::forward<Args>(args)...));
-
-        auto future = task.get_future();
-
-        _in_flight.fetch_add(1, std::memory_order_relaxed);
-
-        _deques[count % _deques.size()].tasks.emplace(std::move(task));
-
-        _deques[count % _deques.size()].sem.release();
-
-        count++;
-
-        return future;
-    }
-
   private:
-    struct NamesPair {
+    struct named_pair {
         Semaphore sem{0};
         Deque<fu2::unique_function<void() &&>> tasks;
     };
 
     std::atomic<std::int64_t> _in_flight;
     std::size_t count = 0;
-    std::vector<NamesPair> _deques;
+    std::vector<named_pair> _deques;
     std::vector<std::jthread> _threads;
-
-    // Returns true if did last task
-    bool fetch_sub() {
-        // https://www.boost.org/doc/libs/1_75_0/doc/html/atomic/usage_examples.html
-        if (_in_flight.fetch_sub(1, std::memory_order_release) == 1) {
-            std::atomic_thread_fence(std::memory_order_acquire);
-            return true;
-        }
-        return false;
-    }
 };
 
 }  // namespace riften
