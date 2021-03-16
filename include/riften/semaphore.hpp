@@ -159,7 +159,6 @@ class Semaphore {
         // Is there a better way to set the initial spin count? If we lower it to 1000, testBenaphore
         // becomes 15x slower on my Core i7-5930K Windows PC, as threads start hitting the kernel
         // semaphore.
-
         for (std::ptrdiff_t spin = 0; spin < 10'000; ++spin) {
             std::ptrdiff_t count = m_count.load(std::memory_order_relaxed);
             if (count > 0 && m_count.compare_exchange_strong(count, count - 1, std::memory_order_acquire)) {
@@ -173,7 +172,7 @@ class Semaphore {
         }
     }
 
-    void acquire_all() {
+    void acquire_many() {
         for (std::ptrdiff_t spin = 0; spin < 10'000; ++spin) {
             std::ptrdiff_t old = m_count.load(std::memory_order_relaxed);
             if (old > 0 && m_count.compare_exchange_strong(old, 0, std::memory_order_acquire)) {
@@ -182,10 +181,12 @@ class Semaphore {
             // Prevent the compiler from collapsing the loop.
             std::atomic_signal_fence(std::memory_order_acquire);
         }
+
+        // It is possible we now only acquire one
+
         if (m_count.fetch_sub(1, std::memory_order_acquire) <= 0) {
             m_sema.wait();
         }
-        try_acquire_all();
     }
 
     bool try_acquire() {
@@ -193,7 +194,7 @@ class Semaphore {
         return (old > 0 && m_count.compare_exchange_strong(old, old - 1, std::memory_order_acquire));
     }
 
-    bool try_acquire_all() {
+    bool try_acquire_many() {
         std::ptrdiff_t old = m_count.load(std::memory_order_relaxed);
         return (old > 0 && m_count.compare_exchange_strong(old, 0, std::memory_order_acquire));
     }
