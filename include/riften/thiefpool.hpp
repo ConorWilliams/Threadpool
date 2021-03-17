@@ -26,7 +26,7 @@ template <typename... Args, std::invocable<Args...> F> auto bind(F &&f, Args &&.
     };
 }
 
-// Like std::packaged_task<R() &&>, but garantees no type-erasure.
+// Like std::packaged_task<R() &&>, but guarantees no type-erasure.
 template <std::invocable F> class NullaryOneShot {
   public:
     using result_type = std::invoke_result_t<F>;
@@ -81,6 +81,7 @@ class Thiefpool {
                             }
                         }
 
+                        // Loop until all the work is done.
                     } while (_in_flight.load(std::memory_order_acquire) > 0);
 
                 } while (!tok.stop_requested());
@@ -98,7 +99,7 @@ class Thiefpool {
 
         std::size_t i = count++ % _deques.size();
 
-        _in_flight.fetch_add(1, std::memory_order_relaxed);
+        _in_flight.fetch_add(1, std::memory_order_release);
         _deques[i].tasks.emplace(std::move(task));
         _deques[i].sem.release();
 
@@ -114,7 +115,7 @@ class Thiefpool {
 
         std::size_t i = count++ % _deques.size();
 
-        _in_flight.fetch_add(1, std::memory_order_relaxed);
+        _in_flight.fetch_add(1, std::memory_order_release);
         _deques[i].tasks.emplace(detail::bind(std::forward<F>(f), std::forward<Args>(args)...));
         _deques[i].sem.release();
     }

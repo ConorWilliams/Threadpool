@@ -38,6 +38,26 @@ TEST_CASE("Null jobs - 3 thread" * doctest::timeout(25)) { null_jobs(3); }
 TEST_CASE("Null jobs - 4 thread" * doctest::timeout(25)) { null_jobs(4); }
 TEST_CASE("Null jobs - 12 thread" * doctest::timeout(25)) { null_jobs(12); }
 
+void detach_job(std::size_t threads) {
+    std::atomic<std::size_t> counter;
+
+    {
+        riften::Thiefpool pool(threads);
+
+        for (std::size_t i = 0; i < (1ul << 21); i++) {
+            pool.enqueue_detach([&]() { counter.fetch_add(1); });
+        }
+    }
+
+    REQUIRE(counter == (1ul << 21));
+}
+
+TEST_CASE("Detach jobs - 1 thread" * doctest::timeout(25)) { detach_job(1); }
+TEST_CASE("Detach jobs - 2 thread" * doctest::timeout(25)) { detach_job(2); }
+TEST_CASE("Detach jobs - 3 thread" * doctest::timeout(25)) { detach_job(3); }
+TEST_CASE("Detach jobs - 4 thread" * doctest::timeout(25)) { detach_job(4); }
+TEST_CASE("Detach jobs - 12 thread" * doctest::timeout(25)) { detach_job(12); }
+
 void fast_jobs(std::size_t threads) {
     std::vector<std::future<int>> future;
 
