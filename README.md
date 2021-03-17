@@ -30,7 +30,7 @@ Which elides the allocation of a `std::future`'s shared state.
 The recommended way to consume this library is through [CPM.cmake](https://github.com/cpm-cmake/CPM.cmake), just add:
 
 ```CMake
-CPMAddPackage("gh:ConorWilliams/Threadpool#v1.0.0")
+CPMAddPackage("gh:ConorWilliams/Threadpool#v1.2.1")
 ```
 to your `CMakeLists.txt` and you're good to go!
 
