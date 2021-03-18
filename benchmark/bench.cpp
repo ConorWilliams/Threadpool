@@ -96,5 +96,6 @@ template <typename T> void Benchmark(int threads, std::string_view str) {
 
 int main() {
     Benchmark<riften::Thiefpool>(12, "riften");
+
     return 0;
 }

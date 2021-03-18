@@ -22,10 +22,14 @@ namespace riften {
 
 namespace detail {
 
-// Bind F and args... into a nullary lambda
-template <typename... Args, std::invocable<Args...> F> auto bind(F &&f, Args &&...arg) {
-    return [f = std::forward<F>(f), ... arg = std::forward<Args>(arg)]() mutable -> decltype(auto) {
-        return std::invoke(std::forward<F>(f), std::forward<Args>(arg)...);
+// See: https://en.cppreference.com/w/cpp/thread/thread/thread
+template <class T> std::decay_t<T> decay_copy(T &&v) { return std::forward<T>(v); }
+
+// Bind F and args... into a nullary one-shot lambda. Lambda captures by value.
+template <typename... Args, typename F> auto bind(F &&f, Args &&...args) {
+    return [f = decay_copy(std::forward<F>(f)),
+            ... args = decay_copy(std::forward<Args>(args))]() mutable -> decltype(auto) {
+        return std::invoke(std::move(f), std::move(args)...);
     };
 }
 
@@ -34,15 +38,16 @@ template <std::invocable F> class NullaryOneShot {
   public:
     using result_type = std::invoke_result_t<F>;
 
-    NullaryOneShot(F &&fn) : _fn(std::forward<F>(fn)) {}
+    // Store a copy of the function
+    NullaryOneShot(F fn) : _fn(std::move(fn)) {}
 
     std::future<result_type> get_future() { return _promise.get_future(); }
 
     void operator()() && {
         if constexpr (!std::is_same_v<void, result_type>) {
-            _promise.set_value(std::invoke(std::forward<F>(_fn)));
+            _promise.set_value(std::invoke(std::move(_fn)));
         } else {
-            std::invoke(std::forward<F>(_fn));
+            std::invoke(std::move(_fn));
             _promise.set_value();
         }
     }
@@ -51,8 +56,6 @@ template <std::invocable F> class NullaryOneShot {
     std::promise<result_type> _promise;
     F _fn;
 };
-
-template <typename F> NullaryOneShot(F &&) -> NullaryOneShot<F>;
 
 }  // namespace detail
 
@@ -90,12 +93,16 @@ class Thiefpool {
         }
     }
 
-    // Enqueue callable `f` into the threadpool. It will be called by perfectly forwarding `args...` (unlike
-    // `std::async`/`std::bind`/`std::thread`). Returns a `std::future<...>` which does not block upon
+    // Enqueue callable `f` into the threadpool. Like `std::async`/`std::thread` a copy of `args...` is made,
+    // use `std::ref` if you really want a reference. Returns a `std::future<...>` which does not block upon
     // destruction.
-    template <typename... Args, std::invocable<Args...> F> auto enqueue(F &&f, Args &&...args) {
+    template <typename... Args, typename F>
+    [[no_discard]] std::future<std::invoke_result_t<std::decay_t<F>, std::decay_t<Args>...>> enqueue(
+        F &&f,
+        Args &&...args) {
         //
         auto task = detail::NullaryOneShot(detail::bind(std::forward<F>(f), std::forward<Args>(args)...));
+
         auto future = task.get_future();
 
         execute(std::move(task));
@@ -103,12 +110,13 @@ class Thiefpool {
         return future;
     }
 
-    // Enqueue callable `f` into the threadpool. It will be called by perfectly forwarded `args...` (unlike
-    // `std::async`/`std::bind`/`std::thread`). This version does *not* return a handle to the called function
-    // and thus only accepts functions which return void.
-    template <typename... Args, std::invocable<Args...> F> void enqueue_detach(F &&f, Args &&...args) {
+    // Enqueue callable `f` into the threadpool. Like `std::async`/`std::thread` a copy of `args...` is made,
+    // use `std::ref` if you really want a reference. This version does *not* return a handle to the called
+    // function and thus only accepts functions which return void.
+    template <typename... Args, typename F> void enqueue_detach(F &&f, Args &&...args) {
         // Cleaner error message than concept
-        static_assert(std::is_same_v<void, std::invoke_result_t<F, Args...>>, "Function must return void.");
+        static_assert(std::is_same_v<void, std::invoke_result_t<std::decay_t<F>, std::decay_t<Args>...>>,
+                      "Function must return void.");
 
         execute(detail::bind(std::forward<F>(f), std::forward<Args>(args)...));
     }
