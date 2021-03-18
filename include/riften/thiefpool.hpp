@@ -36,24 +36,26 @@ template <typename... Args, typename F> auto bind(F &&f, Args &&...args) {
 // Like std::packaged_task<R() &&>, but guarantees no type-erasure.
 template <std::invocable F> class NullaryOneShot {
   public:
-    using result_type = std::invoke_result_t<F>;
-
-    // Store a copy of the function
+    // Stores a copy of the function
     NullaryOneShot(F fn) : _fn(std::move(fn)) {}
 
-    std::future<result_type> get_future() { return _promise.get_future(); }
+    std::future<std::invoke_result_t<F>> get_future() { return _promise.get_future(); }
 
     void operator()() && {
-        if constexpr (!std::is_same_v<void, result_type>) {
-            _promise.set_value(std::invoke(std::move(_fn)));
-        } else {
-            std::invoke(std::move(_fn));
-            _promise.set_value();
+        try {
+            if constexpr (!std::is_same_v<void, std::invoke_result_t<F>>) {
+                _promise.set_value(std::invoke(std::move(_fn)));
+            } else {
+                std::invoke(std::move(_fn));
+                _promise.set_value();
+            }
+        } catch (...) {
+            _promise.set_exception(std::current_exception());
         }
     }
 
   private:
-    std::promise<result_type> _promise;
+    std::promise<std::invoke_result_t<F>> _promise;
     F _fn;
 };
 
