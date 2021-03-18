@@ -23,7 +23,7 @@ find_package(Threads)
 
 include(cmake/CPM.cmake)
 
-CPMAddPackage("gh:TheLartians/PackageProject.cmake@1.4.1")
+CPMAddPackage("gh:TheLartians/PackageProject.cmake@1.6.0")
 CPMAddPackage("gh:Naios/function2#4.1.0")
 CPMAddPackage("gh:ConorWilliams/ConcurrentDeque#v1.1.0")
 

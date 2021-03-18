@@ -1,3 +1,5 @@
+// Written in 2020 by Conor Williams (cw648@cam.ac.uk)
+
 #pragma once
 
 #include <atomic>
@@ -14,6 +16,7 @@
 #include "function2/function2.hpp"
 #include "riften/deque.hpp"
 #include "semaphore.hpp"
+#include "xoroshiro128**.hpp"
 
 namespace riften {
 
@@ -61,24 +64,18 @@ class Thiefpool {
     explicit Thiefpool(std::size_t num_threads = std::thread::hardware_concurrency()) : _deques(num_threads) {
         for (std::size_t i = 0; i < num_threads; ++i) {
             _threads.emplace_back([&, id = i](std::stop_token tok) {
+                jump(id);  // Get a different random stream
                 do {
                     // Wait to be signalled
                     _deques[id].sem.acquire_many();
 
                     do {
-                        // Do all our work
-                        while (!_deques[id].tasks.empty()) {
-                            if (std::optional one_shot = _deques[id].tasks.steal()) {
-                                _in_flight.fetch_sub(1, std::memory_order_release);
-                                std::invoke(std::move(*one_shot));
-                            }
-                        }
-                        // Try and steal some work
-                        for (std::size_t i = id; i < id + _deques.size(); i++) {
-                            if (std::optional one_shot = _deques[i % _deques.size()].tasks.steal()) {
-                                _in_flight.fetch_sub(1, std::memory_order_release);
-                                std::invoke(std::move(*one_shot));
-                            }
+                        // Prioritise our work otherwise steal
+                        std::size_t t = _deques[id].tasks.empty() ? xoroshiro128() % _deques.size() : id;
+
+                        if (std::optional one_shot = _deques[t].tasks.steal()) {
+                            _in_flight.fetch_sub(1, std::memory_order_release);
+                            std::invoke(std::move(*one_shot));
                         }
 
                         // Loop until all the work is done.
@@ -97,11 +94,7 @@ class Thiefpool {
         auto task = detail::NullaryOneShot(detail::bind(std::forward<F>(f), std::forward<Args>(args)...));
         auto future = task.get_future();
 
-        std::size_t i = count++ % _deques.size();
-
-        _in_flight.fetch_add(1, std::memory_order_release);
-        _deques[i].tasks.emplace(std::move(task));
-        _deques[i].sem.release();
+        execute(std::move(task));
 
         return future;
     }
@@ -113,11 +106,7 @@ class Thiefpool {
         // Cleaner error message than concept
         static_assert(std::is_same_v<void, std::invoke_result_t<F, Args...>>, "Function must return void.");
 
-        std::size_t i = count++ % _deques.size();
-
-        _in_flight.fetch_add(1, std::memory_order_release);
-        _deques[i].tasks.emplace(detail::bind(std::forward<F>(f), std::forward<Args>(args)...));
-        _deques[i].sem.release();
+        execute(detail::bind(std::forward<F>(f), std::forward<Args>(args)...));
     }
 
     ~Thiefpool() {
@@ -130,6 +119,15 @@ class Thiefpool {
     }
 
   private:
+    // Fire and forget interface.
+    template <std::invocable F> void execute(F &&f) {
+        std::size_t i = count++ % _deques.size();
+
+        _in_flight.fetch_add(1, std::memory_order_relaxed);
+        _deques[i].tasks.emplace(std::forward<F>(f));
+        _deques[i].sem.release();
+    }
+
     struct named_pair {
         Semaphore sem{0};
         Deque<fu2::unique_function<void() &&>> tasks;
