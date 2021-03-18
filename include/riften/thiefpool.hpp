@@ -69,9 +69,13 @@ class Thiefpool {
                     // Wait to be signalled
                     _deques[id].sem.acquire_many();
 
+                    std::size_t spin = 0;
+
                     do {
                         // Prioritise our work otherwise steal
-                        std::size_t t = _deques[id].tasks.empty() ? xoroshiro128() % _deques.size() : id;
+                        std::size_t t = spin++ < 100 || !_deques[id].tasks.empty()
+                                            ? id
+                                            : xoroshiro128() % _deques.size();
 
                         if (std::optional one_shot = _deques[t].tasks.steal()) {
                             _in_flight.fetch_sub(1, std::memory_order_release);
