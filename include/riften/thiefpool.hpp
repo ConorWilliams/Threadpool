@@ -99,7 +99,7 @@ class Thiefpool {
     // use `std::ref` if you really want a reference. Returns a `std::future<...>` which does not block upon
     // destruction.
     template <typename... Args, typename F>
-    [[no_discard]] std::future<std::invoke_result_t<std::decay_t<F>, std::decay_t<Args>...>> enqueue(
+    [[nodiscard]] std::future<std::invoke_result_t<std::decay_t<F>, std::decay_t<Args>...>> enqueue(
         F &&f,
         Args &&...args) {
         //
