@@ -16,7 +16,7 @@
 #include "function2/function2.hpp"
 #include "riften/deque.hpp"
 #include "semaphore.hpp"
-#include "xoroshiro128**.hpp"
+#include "xoroshiro128starstar.hpp"
 
 namespace riften {
 
