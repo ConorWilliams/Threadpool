@@ -29,6 +29,11 @@ if(TEST_INSTALLED_VERSION)
   find_package(RiftenThiefpool REQUIRED)
 else()
   CPMAddPackage(NAME RiftenThiefpool SOURCE_DIR ${CMAKE_CURRENT_LIST_DIR}/..)
+  if(CMAKE_CXX_COMPILER_ID MATCHES "Clang" OR CMAKE_CXX_COMPILER_ID MATCHES "GNU")
+    target_compile_options(RiftenThiefpool INTERFACE -Wall -Wextra -Wpedantic)
+  elseif(MSVC)
+    target_compile_options(RiftenThiefpool INTERFACE /W4)
+  endif()
 endif()
 
 # ---- Tests ----
@@ -39,6 +44,10 @@ add_executable(${PROJECT_NAME} "${sources}")
 # Link dependencies
 target_link_libraries(
   ${PROJECT_NAME} PUBLIC doctest::doctest RiftenThiefpool::RiftenThiefpool ${CMAKE_THREAD_LIBS_INIT}
+)
+
+target_compile_definitions(
+  ${PROJECT_NAME} PUBLIC $<$<COMPILE_LANG_AND_ID:CXX,MSVC>:DOCTEST_CONFIG_USE_STD_HEADERS>
 )
 
 enable_testing()
