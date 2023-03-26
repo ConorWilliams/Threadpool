@@ -1,4 +1,5 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
+#include "doctest/doctest.h"
 
 #include "riften/thiefpool.hpp"
 
@@ -6,8 +7,6 @@
 #include <iostream>
 #include <thread>
 #include <vector>
-
-#include "doctest/doctest.h"
 
 TEST_CASE("Construct-Destruct") {
     for (std::size_t i = 0; i < 10000; i++) {
