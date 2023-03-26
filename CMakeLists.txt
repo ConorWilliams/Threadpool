@@ -33,8 +33,6 @@ add_library(${PROJECT_NAME} INTERFACE)
 
 target_compile_features(${PROJECT_NAME} INTERFACE cxx_std_20)
 
-target_compile_options(${PROJECT_NAME} INTERFACE -Wall -Wextra -Wpedantic)
-
 # Link dependencies
 target_link_libraries(
   ${PROJECT_NAME} INTERFACE function2::function2 RiftenDeque::RiftenDeque ${CMAKE_THREAD_LIBS_INIT}
